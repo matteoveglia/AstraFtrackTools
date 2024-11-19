@@ -1,0 +1,30 @@
+# Ignore sensitive files
+*.env
+.DS_Store
+.github
+schema.ts 
+######### You will need to generate this schema.ts using the export schema tool in this app first
+
+# Ignore node_modules and other build output
+node_modules
+build
+
+# Ignore logs
+logs
+
+# Ignore pnpm files
+.pnpm-store
+
+# Ignore typescript build output
+dist
+
+# Ignore IDE files
+.vscode
+.idea
+
+# Ignore development dependencies
+*.spec.js
+*.test.js
+*.d.ts
+libDocs
+output

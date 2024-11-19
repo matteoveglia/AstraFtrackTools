@@ -1,0 +1,35 @@
+{
+  "name": "astra-ftrack-tools",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsc && node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "dev:debug": "DEBUG=true tsx src/index.ts",
+    "test": "vitest",
+    "coverage": "vitest --coverage"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@ftrack/api": "^1.11.2",
+    "csv-writer": "^1.6.0",
+    "dotenv": "^16.4.5",
+    "inquirer": "^12.1.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@ftrack/ts-schema-generator": "^2.1.1",
+    "@types/inquirer": "^9.0.7",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.10.0",
+    "@vitest/coverage-v8": "^2.1.5",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.1.5"
+  }
+}
