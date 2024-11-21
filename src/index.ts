@@ -7,6 +7,7 @@ import { exportSchema } from './tools/exportSchema.js';
 import { inspectVersion } from './tools/inspectVersion.js';
 import inspectShot from './tools/inspectShot.js';
 import inspectTask from './tools/inspectTask.js';
+import { propagateThumbnails } from './tools/propagateThumbnails.js';
 import { debug } from './utils/debug.js';
 
 dotenv.config();
@@ -75,6 +76,11 @@ const tools: Tool[] = [
         name: 'Inspect Task',
         value: 'inspectTask',
         description: 'Inspect a specific task\'s details and time logs'
+    },
+    {
+        name: 'Propagate Thumbnails',
+        value: 'propagateThumbnails',
+        description: 'Update shots with thumbnails from their latest asset versions'
     }
 ];
 
@@ -119,6 +125,9 @@ async function runTool(session: Session, tool: string, subOption?: ExportFormat)
             break;
         case 'inspectTask':
             await inspectTask(session);
+            break;
+        case 'propagateThumbnails':
+            await propagateThumbnails(session);
             break;
         default:
             console.error('Invalid tool selected');
