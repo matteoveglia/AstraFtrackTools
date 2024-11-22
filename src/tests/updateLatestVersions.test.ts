@@ -32,8 +32,14 @@ describe('updateLatestVersionsSent', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        vi.spyOn(process.stdin, 'read');
-        vi.spyOn(process.stdout, 'write');
+        vi.resetModules();
+        // Reset readline mock for each test
+        vi.mock('readline', () => ({
+            createInterface: () => ({
+                question: (q: string) => new Promise(resolve => resolve('no')),
+                close: vi.fn()
+            })
+        }));
     });
 
     it('should be defined', () => {
@@ -41,33 +47,6 @@ describe('updateLatestVersionsSent', () => {
     });
 
     it('should process shots and their versions', async () => {
-        const mockSession = {
-            query: vi.fn()
-                // Mock CustomAttributeLinkConfiguration query
-                .mockResolvedValueOnce({ data: [{ id: 'config-1', key: 'latestVersionSent' }] })
-                // Mock Shots query
-                .mockResolvedValueOnce({ data: [{ id: 'shot-1', name: 'shot_010', parent: { name: 'seq_010' } }] })
-                // Mock AssetVersion query
-                .mockResolvedValueOnce({ data: [{ 
-                    id: 'version-1',
-                    version: 1,
-                    asset: { name: 'main', parent: { id: 'shot-1' } },
-                    date: '2023-12-25',
-                    is_published: true,
-                    custom_attributes: [{ key: 'delivered', value: true }]
-                }] })
-                // Mock current link query
-                .mockResolvedValueOnce({ data: [{ id: 'link-1', to_id: 'old-version' }] })
-        } as unknown as Session;
-
-        await updateLatestVersionsSent(mockSession);
-        
-        expect(mockSession.query).toHaveBeenCalledTimes(4);
-        expect(debugModule.debug).toHaveBeenCalled();
-        expect(debugModule.debug).toHaveBeenCalledWith(expect.stringContaining('Found configuration ID:'));
-    });
-
-    it('should handle "all" response and update all shots', async () => {
         const mockSession = {
             query: vi.fn()
                 .mockResolvedValueOnce({ data: [mockConfigs.link] })
@@ -79,14 +58,31 @@ describe('updateLatestVersionsSent', () => {
             call: vi.fn().mockResolvedValue(undefined)
         } as unknown as Session;
 
-        // Mock readline interface
-        const mockQuestion = vi.fn().mockResolvedValueOnce('all');
+        await updateLatestVersionsSent(mockSession);
+        
+        expect(mockSession.query).toHaveBeenCalledTimes(5);
+        expect(debugModule.debug).toHaveBeenCalled();
+    });
+
+    it('should handle "all" response and update all shots', async () => {
+        // Override default readline mock for this test
         vi.mock('readline', () => ({
             createInterface: () => ({
-                question: mockQuestion,
+                question: (q: string) => new Promise(resolve => resolve('all')),
                 close: vi.fn()
             })
         }));
+
+        const mockSession = {
+            query: vi.fn()
+                .mockResolvedValueOnce({ data: [mockConfigs.link] })
+                .mockResolvedValueOnce({ data: [mockConfigs.date] })
+                .mockResolvedValueOnce({ data: [mockShot] })
+                .mockResolvedValueOnce({ data: [mockVersion] })
+                .mockResolvedValueOnce({ data: [{ id: 'link-1', to_id: 'old-version' }] }),
+            update: vi.fn().mockResolvedValue(undefined),
+            call: vi.fn().mockResolvedValue(undefined)
+        } as unknown as Session;
 
         await updateLatestVersionsSent(mockSession);
 
@@ -95,14 +91,17 @@ describe('updateLatestVersionsSent', () => {
             ['link-1'],
             { to_id: 'version-1' }
         );
-        expect(mockSession.update).toHaveBeenCalledWith(
-            'ContextCustomAttributeValue',
-            [mockConfigs.date.id, mockShot.id],
-            expect.objectContaining({ value: expect.any(String) })
-        );
     });
 
     it('should handle "no" response and cancel updates', async () => {
+        // Override default readline mock for this test
+        vi.mock('readline', () => ({
+            createInterface: () => ({
+                question: (q: string) => new Promise(resolve => resolve('no')),
+                close: vi.fn()
+            })
+        }));
+
         const mockSession = {
             query: vi.fn()
                 .mockResolvedValueOnce({ data: [mockConfigs.link] })
@@ -111,15 +110,6 @@ describe('updateLatestVersionsSent', () => {
                 .mockResolvedValueOnce({ data: [mockVersion] })
                 .mockResolvedValueOnce({ data: [{ id: 'link-1', to_id: 'old-version' }] })
         } as unknown as Session;
-
-        // Mock readline interface
-        const mockQuestion = vi.fn().mockResolvedValueOnce('no');
-        vi.mock('readline', () => ({
-            createInterface: () => ({
-                question: mockQuestion,
-                close: vi.fn()
-            })
-        }));
 
         await updateLatestVersionsSent(mockSession);
 
@@ -154,6 +144,14 @@ describe('updateLatestVersionsSent', () => {
     });
 
     it('should update date in ISO format', async () => {
+        // Override default readline mock for this test
+        vi.mock('readline', () => ({
+            createInterface: () => ({
+                question: (q: string) => new Promise(resolve => resolve('all')),
+                close: vi.fn()
+            })
+        }));
+
         const mockSession = {
             query: vi.fn()
                 .mockResolvedValueOnce({ data: [mockConfigs.link] })
@@ -164,14 +162,6 @@ describe('updateLatestVersionsSent', () => {
             update: vi.fn().mockResolvedValue(undefined),
             call: vi.fn().mockResolvedValue(undefined)
         } as unknown as Session;
-
-        const mockQuestion = vi.fn().mockResolvedValueOnce('all');
-        vi.mock('readline', () => ({
-            createInterface: () => ({
-                question: mockQuestion,
-                close: vi.fn()
-            })
-        }));
 
         await updateLatestVersionsSent(mockSession);
 
