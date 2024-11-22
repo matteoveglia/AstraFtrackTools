@@ -23,6 +23,9 @@ importers:
       js-yaml:
         specifier: ^4.1.0
         version: 4.1.0
+      moment:
+        specifier: ^2.30.1
+        version: 2.30.1
     devDependencies:
       '@ftrack/ts-schema-generator':
         specifier: ^2.1.1

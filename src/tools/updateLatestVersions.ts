@@ -34,12 +34,18 @@ interface ProposedChange {
   date: string;
   parentName: string;
   currentLinkId?: string;
+  dateSent: string | null;
+  dateAttributeConfig?: {
+    configuration_id: string;
+    key: string;
+    entity_id: string;
+  };
 }
 
 export async function updateLatestVersionsSent(session: Session): Promise<void> {
   try {
     debug('Starting updateLatestVersionsSent process');
-    // First get the custom attribute configuration
+    // Get both custom attribute configurations
     const configResponse = await session.query(`
       select id, key
       from CustomAttributeLinkConfiguration
@@ -47,12 +53,25 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
       and entity_type is "task"
     `);
 
+    const dateConfigResponse = await session.query(`
+      select id, key
+      from CustomAttributeConfiguration
+      where key is "latestVersionSentDate"
+      and object_type_id in (select id from ObjectType where name is "Shot")
+    `);
+
     if (!configResponse.data || configResponse.data.length === 0) {
       throw new Error('Could not find latestVersionSent configuration');
     }
 
+    if (!dateConfigResponse.data || dateConfigResponse.data.length === 0) {
+      throw new Error('Could not find latestVersionSentDate configuration');
+    }
+
     const configId = configResponse.data[0].id;
+    const dateConfigId = dateConfigResponse.data[0].id;
     debug(`Found configuration ID: ${configId}`);
+    debug(`Found date configuration ID: ${dateConfigId}`);
 
     // Get all shots and their current links
     const shotsResponse = await session.query(`
@@ -117,6 +136,9 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
 
       if (sortedVersions.length > 0) {
         const latestVersion = sortedVersions[0];
+        
+        // Get the date from the version
+        const dateSent = latestVersion.date ? new Date(latestVersion.date).toISOString() : null;
 
         // Get current version details
         let currentVersionName = 'None';
@@ -140,7 +162,13 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
               versionId: latestVersion.id,
               date: latestVersion.date ? new Date(latestVersion.date).toLocaleDateString() : 'No date',
               parentName: shot.parent?.name || 'No Parent',
-              currentLinkId: currentLinkResponse.data[0]?.id
+              currentLinkId: currentLinkResponse.data[0]?.id,
+              dateSent,
+              dateAttributeConfig: {
+                configuration_id: dateConfigId,
+                key: 'latestVersionSentDate',
+                entity_id: shot.id
+              }
             });
           }
         }
@@ -220,7 +248,22 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
               await session.create('AssetVersionCustomAttributeLink', [linkData]);
             }
           }
-          console.log(`Updated ${change.shotName}: ${change.currentVersion} → ${change.newVersion}`);
+
+          // Update date if available
+          if (change.dateSent && change.dateAttributeConfig) {
+            await session.update(
+              'ContextCustomAttributeValue',
+              [change.dateAttributeConfig.configuration_id, change.dateAttributeConfig.entity_id],
+              {
+                value: change.dateSent,
+                key: change.dateAttributeConfig.key,
+                entity_id: change.dateAttributeConfig.entity_id,
+                configuration_id: change.dateAttributeConfig.configuration_id
+              }
+            );
+          }
+
+          console.log(`Updated ${change.shotName}: ${change.currentVersion} → ${change.newVersion} (Date: ${change.dateSent || 'Not set'})`);
         } catch (error) {
           console.error(`Failed to update shot ${change.shotName}:`, error);
         }
@@ -275,7 +318,22 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
                 await session.create('AssetVersionCustomAttributeLink', [linkData]);
               }
             }
-            console.log(`Updated ${change.shotName}: ${change.currentVersion} → ${change.newVersion}`);
+
+            // Update date if available
+            if (change.dateSent && change.dateAttributeConfig) {
+              await session.update(
+                'ContextCustomAttributeValue',
+                [change.dateAttributeConfig.configuration_id, change.dateAttributeConfig.entity_id],
+                {
+                  value: change.dateSent,
+                  key: change.dateAttributeConfig.key,
+                  entity_id: change.dateAttributeConfig.entity_id,
+                  configuration_id: change.dateAttributeConfig.configuration_id
+                }
+              );
+            }
+
+            console.log(`Updated ${change.shotName}: ${change.currentVersion} → ${change.newVersion} (Date: ${change.dateSent || 'Not set'})`);
           } catch (error) {
             console.error(`Failed to update shot ${change.shotName}:`, error);
             const continueAfterError = await new Promise<string>(resolve => {
