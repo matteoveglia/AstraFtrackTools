@@ -17,6 +17,7 @@ logs
 
 # Ignore typescript build output
 dist
+bin
 
 # Ignore IDE files
 .vscode
