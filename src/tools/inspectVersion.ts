@@ -1,6 +1,6 @@
 import { Session } from '@ftrack/api';
 import inquirer from 'inquirer';
-import { debug } from '../utils/debug.js';
+import { debug } from '../utils/debug.ts';
 
 export async function inspectVersion(session: Session, versionId?: string) {
     // If no versionId provided, prompt user for input

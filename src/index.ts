@@ -1,14 +1,13 @@
 import { Session } from '@ftrack/api';
 import inquirer from 'inquirer';
-import type { Question } from 'inquirer';
 import dotenv from 'dotenv';
-import { updateLatestVersionsSent } from './tools/updateLatestVersions.js';
-import { exportSchema } from './tools/exportSchema.js';
-import { inspectVersion } from './tools/inspectVersion.js';
-import inspectShot from './tools/inspectShot.js';
-import inspectTask from './tools/inspectTask.js';
-import { propagateThumbnails } from './tools/propagateThumbnails.js';
-import { debug } from './utils/debug.js';
+import { updateLatestVersionsSent } from './tools/updateLatestVersions.ts';
+import { exportSchema } from './tools/exportSchema.ts';
+import { inspectVersion } from './tools/inspectVersion.ts';
+import inspectShot from './tools/inspectShot.ts';
+import inspectTask from './tools/inspectTask.ts';
+import { propagateThumbnails } from './tools/propagateThumbnails.ts';
+import { debug } from './utils/debug.ts';
 
 dotenv.config();
 

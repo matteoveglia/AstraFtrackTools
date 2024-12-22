@@ -1,2 +1,2 @@
 
-export * from './customAttributes.js';
+export * from './customAttributes.ts';

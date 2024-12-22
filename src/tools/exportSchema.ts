@@ -1,12 +1,12 @@
-import fs from 'fs/promises';
-import path from 'path';
-import { execSync } from 'child_process';
-import { fileURLToPath } from 'url';
-import yaml from 'js-yaml';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import yaml from 'npm:js-yaml@4.1.0';
 import { createObjectCsvWriter } from 'csv-writer';
-import { MOCK_SCHEMA } from '../schemas/mockSchema.js';
+import { MOCK_SCHEMA } from '../schemas/mockSchema.ts';
 import type { Session } from '@ftrack/api';
-import { debug } from '../utils/debug.js';
+import { debug } from '../utils/debug.ts';
 
 export interface SchemaField {
     type: string;

@@ -1,6 +1,6 @@
 import { Session } from '@ftrack/api';
 import inquirer from 'inquirer';
-import { debug } from '../utils/debug.js';
+import { debug } from '../utils/debug.ts';
 
 async function inspectTask(session: Session, taskId?: string) {
     // If no taskId provided, prompt user for input

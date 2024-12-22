@@ -1,6 +1,6 @@
 import { Session } from '@ftrack/api';
 import inquirer from 'inquirer';
-import { debug } from '../utils/debug.js';
+import { debug } from '../utils/debug.ts';
 
 export async function propagateThumbnails(session: Session, shotId?: string) {
     // If no shotId provided, prompt user for input

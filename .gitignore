@@ -1,5 +1,5 @@
 # Ignore sensitive files
-*.env
+.env
 .DS_Store
 .github
 schema.ts 
@@ -29,3 +29,18 @@ bin
 *.d.ts
 libDocs
 output
+
+# Deno specific
+deno.lock
+.env
+
+# Coverage directory
+coverage/
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+.idea/
+
+# OS specific
+.DS_Store

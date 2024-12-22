@@ -1,4 +1,4 @@
-import type { EntitySchema } from '../tools/exportSchema.js';
+import type { EntitySchema } from '../tools/exportSchema.ts';
 
 export const MOCK_SCHEMA: Record<string, EntitySchema> = {
     Action: {

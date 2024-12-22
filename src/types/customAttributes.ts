@@ -2,7 +2,7 @@ import type {
   TypedCustomAttributeValueMap, 
   ContextCustomAttributeValue,
   AssetVersion
-} from '../schemas/schema.js';
+} from '../schemas/schema.ts';
 
 // Core custom attribute interfaces
 export interface AssetVersionCustomAttributes extends ContextCustomAttributeValue {

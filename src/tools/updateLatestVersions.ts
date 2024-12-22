@@ -14,16 +14,16 @@
  */
 
 import { Session } from '@ftrack/api';
-import { createInterface } from 'readline';
+import { createInterface } from 'node:readline';
 import type { 
   Shot, 
   AssetVersion,
   TypedCustomAttributeValue,
   TypedContextCustomAttributesMap,
   ContextCustomAttributeValue
-} from '../schemas/schema.js';
-import { AssetVersionCustomAttributes, isDeliveredAttribute } from '../types/index.js';
-import { debug } from '../utils/debug.js';
+} from '../schemas/schema.ts';
+import { AssetVersionCustomAttributes, isDeliveredAttribute } from '../types/index.ts';
+import { debug } from '../utils/debug.ts';
 
 interface ProposedChange {
   shotName: string;
