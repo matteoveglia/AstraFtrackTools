@@ -1,28 +1,34 @@
 /**
- * Updates all shots with the latest delivered version.
+ * Updates shots' latest delivered version links and sent dates.
  * 
- * This function:
+ * This tool provides two main modes:
+ * 1. Check for new changes only (default)
+ *    - Only updates shots where a newer delivered version exists
+ *    - Updates both the version link and the sent date
  * 
- * 1. Gets the custom attribute configuration for latestVersionSent.
- * 2. Queries all shots and their current links.
- * 3. Queries all versions linked to these shots.
- * 4. Filters for delivered versions.
- * 5. Sorts by date descending.
- * 6. Updates the latestVersionSent link for each shot if necessary.
- * 7. Prompts for confirmation.
- * 8. Performs the updates.
+ * 2. Force update mode
+ *    - Can update all shots regardless of current state
+ *    - Option to switch to only detected differences after preview
+ *    - Useful for fixing inconsistencies or updating dates
+ * 
+ * The tool will:
+ * 1. Get all shots and their current version links
+ * 2. Find the latest delivered version for each shot
+ * 3. Show a preview of all proposed changes
+ * 4. Allow batch or individual update confirmation
+ * 
+ * Note: Only considers published and delivered versions
  */
 
 import { Session } from '@ftrack/api';
-import { createInterface } from 'node:readline';
+import inquirer from 'inquirer';
+import chalk from 'chalk';
 import type { 
   Shot, 
   AssetVersion,
-  TypedCustomAttributeValue,
-  TypedContextCustomAttributesMap,
   ContextCustomAttributeValue
 } from '../schemas/schema.ts';
-import { AssetVersionCustomAttributes, isDeliveredAttribute } from '../types/index.ts';
+import { isDeliveredAttribute } from '../types/index.ts';
 import { debug } from '../utils/debug.ts';
 
 interface ProposedChange {
@@ -40,11 +46,36 @@ interface ProposedChange {
     key: string;
     entity_id: string;
   };
+  reason: 'new_version' | 'force_update';
+  currentDate: string | null;
+  newDate: string | null;
+}
+
+// Add a helper function for date formatting
+function formatDate(dateString: string | null): string {
+  if (!dateString) return 'Not set';
+  return new Date(dateString).toISOString().split('T')[0];
 }
 
 export async function updateLatestVersionsSent(session: Session): Promise<void> {
   try {
     debug('Starting updateLatestVersionsSent process');
+
+    // Replace readline with inquirer
+    const { mode } = await inquirer.prompt([{
+      type: 'list',
+      name: 'mode',
+      message: 'Select update mode:',
+      choices: [
+        { name: 'Check for new changes only', value: 'new' },
+        { name: 'Force update all shots', value: 'force' }
+      ],
+      default: 'new'
+    }]);
+
+    const forceUpdate = mode === 'force';
+    debug(`Update mode: ${forceUpdate ? 'Force update' : 'New changes only'}`);
+
     // Get both custom attribute configurations
     const configResponse = await session.query(`
       select id, key
@@ -149,18 +180,28 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
           }
         }
 
+        // Get current date value and format it
+        const currentDateResponse = await session.query(`
+          select value
+          from ContextCustomAttributeValue
+          where configuration_id is "${dateConfigId}"
+          and entity_id is "${shot.id}"
+        `);
+
+        const currentDate = currentDateResponse.data[0]?.value || null;
+
         if (latestVersion.asset?.name && latestVersion.version) {
           const newVersionName = `${latestVersion.asset.name}_v${latestVersion.version.toString().padStart(3, '0')}`;
-          // Only update if different
-          if (currentVersionId !== latestVersion.id) {
-            debug(`Found newer version for ${shot.name}: ${newVersionName}`);
+          // Modified comparison logic to handle force update
+          if (forceUpdate || currentVersionId !== latestVersion.id) {
+            debug(`${forceUpdate ? 'Force updating' : 'Found newer version for'} ${shot.name}: ${newVersionName}`);
             proposedChanges.push({
               shotName: shot.name,
               shotId: shot.id,
               currentVersion: currentVersionName,
               newVersion: newVersionName,
               versionId: latestVersion.id,
-              date: latestVersion.date ? new Date(latestVersion.date).toLocaleDateString() : 'No date',
+              date: latestVersion.date ? formatDate(latestVersion.date) : 'No date',
               parentName: shot.parent?.name || 'No Parent',
               currentLinkId: currentLinkResponse.data[0]?.id,
               dateSent,
@@ -168,7 +209,10 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
                 configuration_id: dateConfigId,
                 key: 'latestVersionSentDate',
                 entity_id: shot.id
-              }
+              },
+              reason: forceUpdate ? 'force_update' : 'new_version',
+              currentDate,
+              newDate: dateSent
             });
           }
         }
@@ -177,39 +221,99 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
       }
     }
 
-    // Preview changes
-    if (proposedChanges.length === 0) {
-      console.log('No updates needed - all shots are up to date.');
-      return;
-    }
-
+    // Store all changes if in force mode for potential filtering
+    let changesPool = [...proposedChanges];
+    
+    // Enhanced preview with colored diffs
     console.log('\nProposed Changes:');
     console.log('=================');
+    
+    // Show changes summary
     proposedChanges.forEach(change => {
-      console.log(`\nShot: ${change.shotName} (${change.parentName})`);
-      console.log(`Current Latest Version: ${change.currentVersion}`);
-      console.log(`New Latest Version: ${change.newVersion}`);
-      console.log(`Version Date: ${change.date}`);
+      console.log(`\n${chalk.bold(change.shotName)} (${change.parentName})`);
+      
+      // Version diff
+      const versionDiff = change.currentVersion !== change.newVersion;
+      console.log('Version:');
+      console.log(`  From: ${versionDiff ? chalk.red(change.currentVersion) : change.currentVersion}`);
+      console.log(`  To:   ${versionDiff ? chalk.green(change.newVersion) : change.newVersion}`);
+      
+      // Date diff with formatted dates - compare formatted dates
+      const formattedCurrentDate = formatDate(change.currentDate);
+      const formattedNewDate = formatDate(change.newDate);
+      const dateDiff = formattedCurrentDate !== formattedNewDate;
+      console.log('Date:');
+      console.log(`  From: ${dateDiff ? chalk.red(formattedCurrentDate) : formattedCurrentDate}`);
+      console.log(`  To:   ${dateDiff ? chalk.green(formattedNewDate) : formattedNewDate}`);
+      
+      console.log(`Reason: ${chalk.blue(change.reason === 'force_update' ? 'Force update' : 'New version available')}`);
     });
 
-    // Prompt for confirmation
-    const rl = createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
+    // If in force mode, offer option to switch to only differences
+    if (forceUpdate && proposedChanges.length > 0) {
+      const { switchMode } = await inquirer.prompt([{
+        type: 'list',
+        name: 'switchMode',
+        message: 'You are in force update mode. How would you like to proceed?',
+        choices: [
+          { name: 'Continue with all updates', value: 'continue' },
+          { name: 'Filter to changes only', value: 'differences' }
+        ]
+      }]);
 
-    const answer = await new Promise<string>(resolve => {
-      rl.question('\nWould you like to proceed with these changes?\n(Type "all" for all changes, "yes" for one at a time, or "no" to cancel)\n> ', resolve);
-    });
+      if (switchMode === 'differences') {
+        // Filter to keep only changes where version or date is different
+        proposedChanges.length = 0; // Clear array keeping reference
+        const filteredChanges = changesPool.filter(change => {
+          const versionDiff = change.currentVersion !== change.newVersion;
+          const dateDiff = formatDate(change.currentDate) !== formatDate(change.newDate);
+          return versionDiff || dateDiff;
+        });
+        proposedChanges.push(...filteredChanges);
 
-    const lowerAnswer = answer.toLowerCase();
-    if (lowerAnswer === 'no') {
-      rl.close();
+        // Show updated summary
+        console.log('\nUpdated Changes (Differences Only):');
+        console.log('==================================');
+        proposedChanges.forEach(change => {
+          console.log(`\n${chalk.bold(change.shotName)} (${change.parentName})`);
+          
+          // Version diff
+          const versionDiff = change.currentVersion !== change.newVersion;
+          console.log('Version:');
+          console.log(`  From: ${versionDiff ? chalk.red(change.currentVersion) : change.currentVersion}`);
+          console.log(`  To:   ${versionDiff ? chalk.green(change.newVersion) : change.newVersion}`);
+          
+          // Date diff with formatted dates - compare formatted dates
+          const formattedCurrentDate = formatDate(change.currentDate);
+          const formattedNewDate = formatDate(change.newDate);
+          const dateDiff = formattedCurrentDate !== formattedNewDate;
+          console.log('Date:');
+          console.log(`  From: ${dateDiff ? chalk.red(formattedCurrentDate) : formattedCurrentDate}`);
+          console.log(`  To:   ${dateDiff ? chalk.green(formattedNewDate) : formattedNewDate}`);
+          
+          console.log(`Reason: ${chalk.blue(change.reason === 'force_update' ? 'Force update' : 'New version available')}`);
+        });
+      }
+    }
+
+    // Replace confirm prompt with inquirer
+    const { action } = await inquirer.prompt([{
+      type: 'list',
+      name: 'action',
+      message: `How would you like to proceed with these ${proposedChanges.length} changes?`,
+      choices: [
+        { name: 'Apply all changes', value: 'all' },
+        { name: 'Review one by one', value: 'review' },
+        { name: 'Cancel', value: 'cancel' }
+      ]
+    }]);
+
+    if (action === 'cancel') {
       console.log('Update cancelled.');
       return;
     }
 
-    if (lowerAnswer === 'all') {
+    if (action === 'all') {
       // Perform all updates at once
       for await (const change of proposedChanges) {
         try {
@@ -269,19 +373,30 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
         }
       }
       console.log('\nAll updates completed successfully!');
-    } else if (lowerAnswer === 'yes') {
-      // Process one at a time
-      for await (const change of proposedChanges) {
-        const confirmThis = await new Promise<string>(resolve => {
-          rl.question(`\nUpdate ${change.shotName} (${change.parentName})?\nCurrent: ${change.currentVersion}\nNew: ${change.newVersion}\nDate: ${change.date}\n(yes/no/quit) > `, resolve);
-        });
+    } else if (action === 'review') {
+      // Replace individual prompts with inquirer
+      for (const change of proposedChanges) {
+        const { confirm } = await inquirer.prompt([{
+          type: 'list',
+          name: 'confirm',
+          message: `
+Update ${chalk.bold(change.shotName)} (${change.parentName})?
+Version: ${chalk.red(change.currentVersion)} → ${chalk.green(change.newVersion)}
+Date: ${chalk.red(formatDate(change.currentDate))} → ${chalk.green(formatDate(change.newDate))}
+          `,
+          choices: [
+            { name: 'Yes', value: 'yes' },
+            { name: 'No', value: 'no' },
+            { name: 'Quit', value: 'quit' }
+          ]
+        }]);
 
-        if (confirmThis.toLowerCase() === 'quit') {
+        if (confirm === 'quit') {
           console.log('Updates stopped by user.');
           break;
         }
 
-        if (confirmThis.toLowerCase() === 'yes') {
+        if (confirm === 'yes') {
           try {
             debug(`Processing individual update for ${change.shotName}`);
             debug(`Shot ID: ${change.shotId}`);
@@ -336,10 +451,14 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
             console.log(`Updated ${change.shotName}: ${change.currentVersion} → ${change.newVersion} (Date: ${change.dateSent || 'Not set'})`);
           } catch (error) {
             console.error(`Failed to update shot ${change.shotName}:`, error);
-            const continueAfterError = await new Promise<string>(resolve => {
-              rl.question('Continue with remaining updates? (yes/no) > ', resolve);
-            });
-            if (continueAfterError.toLowerCase() !== 'yes') {
+            const { continueAfterError } = await inquirer.prompt([{
+              type: 'confirm',
+              name: 'continueAfterError',
+              message: 'Continue with remaining updates?',
+              default: true
+            }]);
+            
+            if (!continueAfterError) {
               break;
             }
           }
@@ -350,8 +469,6 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
       }
       console.log('\nFinished processing all selected updates.');
     }
-
-    rl.close();
 
   } catch (error) {
     console.error('Error during processing:', error);
