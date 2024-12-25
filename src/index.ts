@@ -7,29 +7,26 @@ import { inspectVersion } from './tools/inspectVersion.ts';
 import inspectShot from './tools/inspectShot.ts';
 import inspectTask from './tools/inspectTask.ts';
 import { propagateThumbnails } from './tools/propagateThumbnails.ts';
-import { debug } from './utils/debug.ts';
+import { debug, handleError } from './utils/debug.ts';
+import { loadPreferences, savePreferences } from "./utils/preferences.ts";
 
 dotenv.config();
 const machineHostname = Deno.hostname();
 
-// Validate environment variables
-if (!process.env.FTRACK_SERVER || !process.env.FTRACK_API_USER || !process.env.FTRACK_API_KEY) {
-    throw new Error('Missing required environment variables. Please check your .env file.');
-}
-
 // Initialize ftrack session
 async function initSession(): Promise<Session> {
-
-    debug('Validating environment variables');
-    if (!process.env.FTRACK_SERVER || !process.env.FTRACK_API_USER || !process.env.FTRACK_API_KEY) {
-        throw new Error('Missing required environment variables');
+    debug('Loading preferences');
+    const prefs = await loadPreferences();
+    
+    if (!prefs.FTRACK_SERVER || !prefs.FTRACK_API_USER || !prefs.FTRACK_API_KEY) {
+        throw new Error('Missing required Ftrack credentials in preferences');
     }
     
     debug('Initializing ftrack session...');
     const session = new Session(
-        process.env.FTRACK_SERVER,
-        process.env.FTRACK_API_USER,
-        process.env.FTRACK_API_KEY,
+        prefs.FTRACK_SERVER,
+        prefs.FTRACK_API_USER,
+        prefs.FTRACK_API_KEY,
         { autoConnectEventHub: false }
     );
     await session.initializing;
@@ -42,9 +39,76 @@ interface Tool {
     value: string;
     description: string;
     subMenu?: { name: string; value: string; }[];
+    action?: () => Promise<void>;  // Return type is void
 }
 
 type ExportFormat = 'json' | 'yaml' | 'csv' | 'ts';
+
+async function testFtrackCredentials(server: string, user: string, key: string): Promise<boolean> {
+    try {
+        debug('Testing Ftrack credentials...');
+        const testSession = new Session(server, user, key, { autoConnectEventHub: false });
+        await testSession.initializing;
+        debug('Credentials test successful');
+        return true;
+    } catch (error) {
+        // Prevent the error from being logged to console
+        if (error instanceof Error && 'errorCode' in error) {
+            const errorMessage = handleError(error);
+            console.error('Authentication failed:', errorMessage);
+        } else {
+            debug('Unexpected error during authentication:', error);
+            console.error('Authentication failed: Unable to connect to Ftrack');
+        }
+        return false;
+    }
+}
+
+async function setAndTestCredentials(): Promise<void> {  // Changed return type to void
+    const answers = await inquirer.prompt([
+        {
+            type: 'input',
+            name: 'server',
+            message: 'Ftrack Server URL:',
+            default: (await loadPreferences()).FTRACK_SERVER
+        },
+        {
+            type: 'input',
+            name: 'user',
+            message: 'API User:',
+            default: (await loadPreferences()).FTRACK_API_USER
+        },
+        {
+            type: 'password',
+            name: 'key',
+            message: 'API Key:',
+            mask: '*'
+        }
+    ]);
+
+    const shouldTest = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'test',
+        message: 'Would you like to test these credentials?',
+        default: true
+    }]);
+
+    if (shouldTest.test) {
+        const isValid = await testFtrackCredentials(answers.server, answers.user, answers.key);
+        if (!isValid) {
+            console.log('Credentials test failed. Please try again.');
+            return;  // Exit without saving if test fails
+        }
+    }
+
+    await savePreferences({
+        FTRACK_SERVER: answers.server,
+        FTRACK_API_USER: answers.user,
+        FTRACK_API_KEY: answers.key
+    });
+    
+    console.log('Authentication success! Credentials saved successfully');
+}
 
 // Available tools
 const tools: Tool[] = [
@@ -83,6 +147,12 @@ const tools: Tool[] = [
         name: 'Propagate Thumbnails',
         value: 'propagateThumbnails',
         description: 'Update shots with thumbnails from their latest asset versions'
+    },
+    {
+        name: "Set Ftrack Credentials",
+        value: "set-credentials",
+        description: "Configure Ftrack API credentials",
+        action: setAndTestCredentials
     }
 ];
 
@@ -131,6 +201,15 @@ async function runTool(session: Session, tool: string, subOption?: ExportFormat)
         case 'propagateThumbnails':
             await propagateThumbnails(session);
             break;
+        case 'set-credentials': {
+            const credentialsTool = tools.find(t => t.value === 'set-credentials');
+            if (credentialsTool?.action) {
+                await credentialsTool.action();
+            } else {
+                throw new Error('Set credentials action not found');
+            }
+            break;
+        }
         default:
             console.error('Invalid tool selected');
     }
@@ -141,6 +220,20 @@ async function main() {
     try {
         debug('Starting application...');
         debug("Hostname is: " + machineHostname);
+
+        // Check for existing credentials
+        const prefs = await loadPreferences();
+        if (!prefs.FTRACK_SERVER || !prefs.FTRACK_API_USER || !prefs.FTRACK_API_KEY) {
+            console.log('No Ftrack credentials found. Please configure them first.');
+            await setAndTestCredentials();
+            // Try loading preferences again
+            const newPrefs = await loadPreferences();
+            if (!newPrefs.FTRACK_SERVER || !newPrefs.FTRACK_API_USER || !newPrefs.FTRACK_API_KEY) {
+                console.log('Failed to set up valid credentials. Exiting...');
+                Deno.exit(1);
+            }
+        }
+
         // Initialize ftrack session
         const session = await initSession();
         
@@ -182,7 +275,7 @@ async function main() {
         }
     } catch (error) {
         console.error('Error:', error);
-        process.exit(1);
+        Deno.exit(1);
     }
 }
 

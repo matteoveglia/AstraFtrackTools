@@ -9,8 +9,8 @@
     "chalk": "jsr:@nothing628/chalk"
   },
   "tasks": {
-    "build": "deno compile --no-check --allow-env --allow-read --allow-write --allow-net --output dist/astraftracktools src/index.ts",
-    "start": "deno run --allow-env --allow-read --allow-write --allow-net src/index.ts",
+    "build": "deno compile --no-check --allow-env --allow-read --allow-write --allow-net --allow-sys --output dist/astraftracktools src/index.ts",
+    "start": "deno run --allow-env --allow-read --allow-write --allow-net --allow-sys src/index.ts",
     "dev": "deno run --allow-env --allow-read --allow-write --allow-net --watch src/index.ts",
     "dev:debug": "deno run --allow-env --allow-read --allow-write --allow-net --allow-sys --watch src/index.ts DEBUG",
     "test": "deno test --allow-read --allow-write --allow-env",
