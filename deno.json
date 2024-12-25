@@ -6,7 +6,8 @@
     "inquirer": "npm:inquirer@^12.2.0",
     "js-yaml": "npm:js-yaml@^4.1.0",
     "moment": "npm:moment@^2.30.1",
-    "chalk": "jsr:@nothing628/chalk"
+    "chalk": "jsr:@nothing628/chalk",
+    "crypto": "jsr:@std/crypto/crypto"
   },
   "tasks": {
     "build": "deno compile --no-check --allow-env --allow-read --allow-write --allow-net --allow-sys --output dist/astraftracktools src/index.ts",

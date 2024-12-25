@@ -1,3 +1,5 @@
+import { encrypt, decrypt, generateKey } from "./crypto.ts";
+
 type Preferences = {
   FTRACK_SERVER?: string;
   FTRACK_API_USER?: string;
@@ -34,33 +36,37 @@ async function ensurePreferencesDir(): Promise<void> {
 
 export async function savePreferences(prefs: Preferences): Promise<void> {
   await ensurePreferencesDir();
+  const key = await generateKey(Deno.hostname());
   
-  // Convert values to base64
-  const encodedPrefs = Object.fromEntries(
-    Object.entries(prefs).map(([key, value]) => [
-      key,
-      value ? btoa(value) : null
-    ])
+  const entries = await Promise.all(
+    Object.entries(prefs).map(async ([k, v]) => {
+      const encrypted = v ? await encrypt(v, key) : null;
+      return [k, encrypted] as [string, string | null];
+    })
   );
+  
+  const encryptedPrefs = Object.fromEntries(entries);
   
   await Deno.writeTextFile(
     getPreferencesPath(),
-    JSON.stringify(encodedPrefs, null, 2)
+    JSON.stringify(encryptedPrefs, null, 2)
   );
 }
 
 export async function loadPreferences(): Promise<Preferences> {
   try {
     const content = await Deno.readTextFile(getPreferencesPath());
-    const encodedPrefs = JSON.parse(content);
+    const encryptedPrefs = JSON.parse(content) as Record<string, string | null>;
+    const key = await generateKey(Deno.hostname());
     
-    // Decode base64 values
-    return Object.fromEntries(
-      Object.entries(encodedPrefs).map(([key, value]) => [
-        key,
-        value ? atob(value as string) : null
-      ])
+    const entries = await Promise.all(
+      Object.entries(encryptedPrefs).map(async ([k, v]) => {
+        const decrypted = v ? await decrypt(v, key) : null;
+        return [k, decrypted] as [string, string | null];
+      })
     );
+    
+    return Object.fromEntries(entries) as Preferences;
   } catch (error) {
     if (error instanceof Deno.errors.NotFound) {
       return {};

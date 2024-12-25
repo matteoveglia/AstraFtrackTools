@@ -1,16 +1,14 @@
 import { Session } from '@ftrack/api';
 import inquirer from 'inquirer';
-import dotenv from 'dotenv';
 import { updateLatestVersionsSent } from './tools/updateLatestVersions.ts';
 import { exportSchema } from './tools/exportSchema.ts';
 import { inspectVersion } from './tools/inspectVersion.ts';
 import inspectShot from './tools/inspectShot.ts';
 import inspectTask from './tools/inspectTask.ts';
 import { propagateThumbnails } from './tools/propagateThumbnails.ts';
-import { debug, handleError } from './utils/debug.ts';
+import { debug } from './utils/debug.ts';
 import { loadPreferences, savePreferences } from "./utils/preferences.ts";
 
-dotenv.config();
 const machineHostname = Deno.hostname();
 
 // Initialize ftrack session
@@ -48,66 +46,72 @@ async function testFtrackCredentials(server: string, user: string, key: string):
     try {
         debug('Testing Ftrack credentials...');
         const testSession = new Session(server, user, key, { autoConnectEventHub: false });
+        // Just wait for session initialization - this will fail if credentials are invalid
         await testSession.initializing;
         debug('Credentials test successful');
         return true;
     } catch (error) {
-        // Prevent the error from being logged to console
-        if (error instanceof Error && 'errorCode' in error) {
-            const errorMessage = handleError(error);
-            console.error('Authentication failed:', errorMessage);
-        } else {
-            debug('Unexpected error during authentication:', error);
-            console.error('Authentication failed: Unable to connect to Ftrack');
-        }
+        console.error('Failed to authenticate with Ftrack:', error);
         return false;
     }
 }
 
-async function setAndTestCredentials(): Promise<void> {  // Changed return type to void
-    const answers = await inquirer.prompt([
-        {
-            type: 'input',
-            name: 'server',
-            message: 'Ftrack Server URL:',
-            default: (await loadPreferences()).FTRACK_SERVER
-        },
-        {
-            type: 'input',
-            name: 'user',
-            message: 'API User:',
-            default: (await loadPreferences()).FTRACK_API_USER
-        },
-        {
-            type: 'password',
-            name: 'key',
-            message: 'API Key:',
-            mask: '*'
-        }
-    ]);
+async function setAndTestCredentials(): Promise<boolean> {  // Changed return type to boolean
+    while (true) {  // Loop until valid credentials or user quits
+        const answers = await inquirer.prompt([
+            {
+                type: 'input',
+                name: 'server',
+                message: 'Ftrack Server URL:',
+                default: (await loadPreferences()).FTRACK_SERVER
+            },
+            {
+                type: 'input',
+                name: 'user',
+                message: 'API User:',
+                default: (await loadPreferences()).FTRACK_API_USER
+            },
+            {
+                type: 'password',
+                name: 'key',
+                message: 'API Key:',
+                mask: '*'
+            }
+        ]);
 
-    const shouldTest = await inquirer.prompt([{
-        type: 'confirm',
-        name: 'test',
-        message: 'Would you like to test these credentials?',
-        default: true
-    }]);
+        const shouldTest = await inquirer.prompt([{
+            type: 'confirm',
+            name: 'test',
+            message: 'Would you like to test these credentials?',
+            default: true
+        }]);
 
-    if (shouldTest.test) {
-        const isValid = await testFtrackCredentials(answers.server, answers.user, answers.key);
-        if (!isValid) {
-            console.log('Credentials test failed. Please try again.');
-            return;  // Exit without saving if test fails
+        if (shouldTest.test) {
+            const isValid = await testFtrackCredentials(answers.server, answers.user, answers.key);
+            if (!isValid) {
+                const retry = await inquirer.prompt([{
+                    type: 'confirm',
+                    name: 'again',
+                    message: 'Would you like to try again?',
+                    default: true
+                }]);
+                
+                if (!retry.again) {
+                    return false;  // User chose to quit
+                }
+                continue;  // Try again
+            }
         }
+
+        await savePreferences({
+            FTRACK_SERVER: answers.server,
+            FTRACK_API_USER: answers.user,
+            FTRACK_API_KEY: answers.key
+        });
+        
+        console.log('Credentials saved successfully');
+        return true;
     }
-
-    await savePreferences({
-        FTRACK_SERVER: answers.server,
-        FTRACK_API_USER: answers.user,
-        FTRACK_API_KEY: answers.key
-    });
-    
-    console.log('Authentication success! Credentials saved successfully');
 }
 
 // Available tools
@@ -225,12 +229,10 @@ async function main() {
         const prefs = await loadPreferences();
         if (!prefs.FTRACK_SERVER || !prefs.FTRACK_API_USER || !prefs.FTRACK_API_KEY) {
             console.log('No Ftrack credentials found. Please configure them first.');
-            await setAndTestCredentials();
-            // Try loading preferences again
-            const newPrefs = await loadPreferences();
-            if (!newPrefs.FTRACK_SERVER || !newPrefs.FTRACK_API_USER || !newPrefs.FTRACK_API_KEY) {
-                console.log('Failed to set up valid credentials. Exiting...');
-                Deno.exit(1);
+            const success = await setAndTestCredentials();
+            if (!success) {
+                console.log('Setup cancelled. Exiting...');
+                Deno.exit(0);  // Changed to 0 since this is a user choice
             }
         }
 
