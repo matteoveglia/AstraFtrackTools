@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import yaml from 'npm:js-yaml@4.1.0';
+import yaml from 'js-yaml';
 import { createObjectCsvWriter } from 'csv-writer';
 import { MOCK_SCHEMA } from '../schemas/mockSchema.ts';
 import type { Session } from '@ftrack/api';
@@ -285,7 +285,7 @@ async function exportToCSV(schema: Schema, outputPath: string): Promise<void> {
 async function exportToYAML(schema: Schema, outputPath: string): Promise<void> {
     debug('Starting YAML export...');
     const yamlContent = yaml.dump(schema, {
-        indent: 2,
+        indent: "2",
         lineWidth: -1,
         noRefs: true,
         sortKeys: true

@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import yaml from 'js-yaml';
-import { fileURLToPath } from 'url';
+import { fileURLToPath } from 'node:url';
 import type { Session } from '@ftrack/api';
-import { exportSchema } from '../tools/exportSchema.js';
+import { exportSchema } from '../tools/exportSchema.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outputDir = path.join(__dirname, '../../output');
