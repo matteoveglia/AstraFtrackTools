@@ -10,6 +10,7 @@ import { propagateThumbnails } from './tools/propagateThumbnails.ts';
 import { debug } from './utils/debug.ts';
 
 dotenv.config();
+const machineHostname = Deno.hostname();
 
 // Validate environment variables
 if (!process.env.FTRACK_SERVER || !process.env.FTRACK_API_USER || !process.env.FTRACK_API_KEY) {
@@ -18,6 +19,8 @@ if (!process.env.FTRACK_SERVER || !process.env.FTRACK_API_USER || !process.env.F
 
 // Initialize ftrack session
 async function initSession(): Promise<Session> {
+
+    debug('Validating environment variables');
     if (!process.env.FTRACK_SERVER || !process.env.FTRACK_API_USER || !process.env.FTRACK_API_KEY) {
         throw new Error('Missing required environment variables');
     }
@@ -137,6 +140,7 @@ async function runTool(session: Session, tool: string, subOption?: ExportFormat)
 async function main() {
     try {
         debug('Starting application...');
+        debug("Hostname is: " + machineHostname);
         // Initialize ftrack session
         const session = await initSession();
         

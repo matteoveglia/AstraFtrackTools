@@ -6,13 +6,13 @@
     "inquirer": "npm:inquirer@^12.2.0",
     "js-yaml": "npm:js-yaml@^4.1.0",
     "moment": "npm:moment@^2.30.1",
-    "chalk": "npm:chalk@^5.4.1"
+    "chalk": "jsr:@nothing628/chalk"
   },
   "tasks": {
     "build": "deno compile --no-check --allow-env --allow-read --allow-write --allow-net --output dist/astraftracktools src/index.ts",
     "start": "deno run --allow-env --allow-read --allow-write --allow-net src/index.ts",
     "dev": "deno run --allow-env --allow-read --allow-write --allow-net --watch src/index.ts",
-    "dev:debug": "deno run --allow-env --allow-read --allow-write --allow-net --watch src/index.ts DEBUG=true",
+    "dev:debug": "deno run --allow-env --allow-read --allow-write --allow-net --allow-sys --watch src/index.ts DEBUG",
     "test": "deno test --allow-read --allow-write --allow-env",
     "coverage": "deno test --coverage"
   },

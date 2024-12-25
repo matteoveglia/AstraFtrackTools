@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Session } from '@ftrack/api';
-import { propagateThumbnails } from '../tools/propagateThumbnails.js';
+import { propagateThumbnails } from '../tools/propagateThumbnails.ts';
 import inquirer from 'inquirer';
-import * as debugModule from '../utils/debug.js';
+import * as debugModule from '../utils/debug.ts';
 
 vi.mock('inquirer');
-vi.mock('../utils/debug.js', () => ({
+vi.mock('../utils/debug.ts', () => ({
     debug: vi.fn(),
     isDebugMode: vi.fn().mockReturnValue(true)
 }));

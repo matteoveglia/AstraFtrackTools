@@ -13,7 +13,7 @@ const colors = {
  * Check if debug mode is enabled via DEBUG environment variable
  */
 export const isDebugMode = (): boolean => {
-    return process.env.DEBUG === 'true';
+    return Deno.args.includes('DEBUG');
 };
 
 /**
