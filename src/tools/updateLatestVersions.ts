@@ -51,6 +51,17 @@ interface ProposedChange {
   newDate: string | null;
 }
 
+interface LinkMap {
+  [shotId: string]: {
+    linkId: string;
+    versionId: string;
+  };
+}
+
+interface DateMap {
+  [shotId: string]: string;
+}
+
 // Add a helper function for date formatting
 function formatDate(dateString: string | null): string {
   if (!dateString) return 'Not set';
@@ -91,12 +102,8 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
       and object_type_id in (select id from ObjectType where name is "Shot")
     `);
 
-    if (!configResponse.data || configResponse.data.length === 0) {
-      throw new Error('Could not find latestVersionSent configuration');
-    }
-
-    if (!dateConfigResponse.data || dateConfigResponse.data.length === 0) {
-      throw new Error('Could not find latestVersionSentDate configuration');
+    if (!configResponse.data || !dateConfigResponse.data) {
+      throw new Error('Could not find necessary configurations');
     }
 
     const configId = configResponse.data[0].id;
@@ -104,46 +111,56 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
     debug(`Found configuration ID: ${configId}`);
     debug(`Found date configuration ID: ${dateConfigId}`);
 
-    // Get all shots and their current links
-    const shotsResponse = await session.query(`
-      select id, name, parent.name
-      from Shot
-    `);
+    // Fetch all necessary data in bulk
+    const [shotsResponse, versionsResponse, linksResponse, datesResponse] = await Promise.all([
+      session.query(`
+        select id, name, parent.name
+        from Shot
+      `),
+      session.query(`
+        select 
+          id, version, asset.name, asset.parent.id,
+          date, custom_attributes, is_published, task.parent.id
+        from AssetVersion
+      `),
+      session.query(`
+        select id, from_id, to_id
+        from CustomAttributeLink
+        where configuration.key is "latestVersionSent"
+      `),
+      session.query(`
+        select entity_id, value
+        from ContextCustomAttributeValue
+        where configuration_id is "${dateConfigId}"
+      `)
+    ]);
+
+    // Create lookup maps
+    const linkMap: LinkMap = {};
+    linksResponse.data.forEach(link => {
+      linkMap[link.from_id] = {
+        linkId: link.id,
+        versionId: link.to_id
+      };
+    });
+
+    const dateMap: DateMap = {};
+    datesResponse.data.forEach(date => {
+      dateMap[date.entity_id] = date.value;
+    });
 
     debug(`Found ${shotsResponse.data.length} shots to process`);
 
-    // Update query to include versions linked through asset.parent
-    debug('Querying versions for all shots');
-    const versionsResponse = await session.query(`
-      select 
-        id,
-        version,
-        asset.name,
-        asset.parent.id,
-        date,
-        custom_attributes,
-        is_published,
-        task.parent.id
-      from AssetVersion
-      where (task.parent.id in (${shotsResponse.data.map(shot => `'${shot.id}'`).join(',')})
-      or asset.parent.id in (${shotsResponse.data.map(shot => `'${shot.id}'`).join(',')}))
-    `);
-
     // Process each shot
     const proposedChanges: ProposedChange[] = [];
+    const noDeliveredVersions: Array<{ name: string; parent: string }> = [];
 
     for (const shot of shotsResponse.data as Shot[]) {
       debug(`Processing shot: ${shot.name}`);
-      // Get current link for this shot
-      const currentLinkResponse = await session.query(`
-        select to_id
-        from CustomAttributeLink
-        where configuration.key is "latestVersionSent"
-        and from_id is "${shot.id}"
-      `);
 
-      const currentVersionId = currentLinkResponse.data[0]?.to_id;
-      debug(`Current version ID for ${shot.name}: ${currentVersionId || 'None'}`);
+      // Use map lookups instead of individual queries
+      const currentLink = linkMap[shot.id];
+      const currentDate = dateMap[shot.id];
 
       // Get all versions for this shot (through task or asset parent)
       const shotVersions = (versionsResponse.data as AssetVersion[]).filter(version =>
@@ -173,27 +190,16 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
 
         // Get current version details
         let currentVersionName = 'None';
-        if (currentVersionId) {
-          const currentVersion = deliveredVersions.find(v => v.id === currentVersionId);
+        if (currentLink) {
+          const currentVersion = deliveredVersions.find(v => v.id === currentLink.versionId);
           if (currentVersion?.asset?.name && currentVersion.version) {
             currentVersionName = `${currentVersion.asset.name}_v${currentVersion.version.toString().padStart(3, '0')}`;
           }
         }
 
-        // Get current date value and format it
-        const currentDateResponse = await session.query(`
-          select value
-          from ContextCustomAttributeValue
-          where configuration_id is "${dateConfigId}"
-          and entity_id is "${shot.id}"
-        `);
-
-        const currentDate = currentDateResponse.data[0]?.value || null;
-
         if (latestVersion.asset?.name && latestVersion.version) {
           const newVersionName = `${latestVersion.asset.name}_v${latestVersion.version.toString().padStart(3, '0')}`;
-          // Modified comparison logic to handle force update
-          if (forceUpdate || currentVersionId !== latestVersion.id) {
+          if (forceUpdate || currentLink?.versionId !== latestVersion.id) {
             debug(`${forceUpdate ? 'Force updating' : 'Found newer version for'} ${shot.name}: ${newVersionName}`);
             proposedChanges.push({
               shotName: shot.name,
@@ -203,7 +209,7 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
               versionId: latestVersion.id,
               date: latestVersion.date ? formatDate(latestVersion.date) : 'No date',
               parentName: shot.parent?.name || 'No Parent',
-              currentLinkId: currentLinkResponse.data[0]?.id,
+              currentLinkId: currentLink?.linkId,
               dateSent,
               dateAttributeConfig: {
                 configuration_id: dateConfigId,
@@ -217,10 +223,32 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
           }
         }
       } else {
-        console.log(`No delivered versions found for shot: ${shot.name} (${shot.parent?.name || 'No Parent'})`);
+        noDeliveredVersions.push({ 
+          name: shot.name, 
+          parent: shot.parent?.name || 'No Parent'
+        });
       }
     }
 
+    // Sort and log shots with no delivered versions
+    if (noDeliveredVersions.length > 0) {
+      noDeliveredVersions.sort((a, b) => a.name.localeCompare(b.name));
+      
+      // Get unique parents, sort them
+      const uniqueParents = [...new Set(noDeliveredVersions.map(shot => shot.parent))]
+        .sort((a, b) => a.localeCompare(b));
+
+      console.log(`\nNo delivered versions found for the following ${chalk.yellow(noDeliveredVersions.length)} shots:`);
+      console.log(`Parents: ${uniqueParents.join(', ')}`);
+      console.log(noDeliveredVersions
+        .map(shot => shot.name)
+        .join(', ')
+      );
+    }
+
+    // Sort proposed changes by shot name
+    proposedChanges.sort((a, b) => a.shotName.localeCompare(b.shotName));
+    
     // Store all changes if in force mode for potential filtering
     let changesPool = [...proposedChanges];
     
