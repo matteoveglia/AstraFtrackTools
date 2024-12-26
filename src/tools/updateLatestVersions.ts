@@ -62,7 +62,7 @@ interface DateMap {
   [shotId: string]: string;
 }
 
-// Add a helper function for date formatting
+// Helper function for date formatting
 function formatDate(dateString: string | null): string {
   if (!dateString) return 'Not set';
   return new Date(dateString).toISOString().split('T')[0];
@@ -72,7 +72,6 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
   try {
     debug('Starting updateLatestVersionsSent process');
 
-    // Replace readline with inquirer
     const { mode } = await inquirer.prompt([{
       type: 'list',
       name: 'mode',
@@ -158,7 +157,7 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
     for (const shot of shotsResponse.data as Shot[]) {
       debug(`Processing shot: ${shot.name}`);
 
-      // Use map lookups instead of individual queries
+      // Use map lookups
       const currentLink = linkMap[shot.id];
       const currentDate = dateMap[shot.id];
 
@@ -250,7 +249,7 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
     proposedChanges.sort((a, b) => a.shotName.localeCompare(b.shotName));
     
     // Store all changes if in force mode for potential filtering
-    let changesPool = [...proposedChanges];
+    const changesPool = [...proposedChanges];
     
     // Enhanced preview with colored diffs
     console.log('\nProposed Changes:');
@@ -365,20 +364,14 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
             };
             debug(`Link data: ${JSON.stringify(linkData, null, 2)}`);
 
-            // Try direct operation first
-            try {
-              const operation = {
-                action: 'create',
-                entity_type: 'CustomAttributeLink',
-                entity_data: linkData
-              };
+            const operation = {
+              action: 'create',
+              entity_type: 'CustomAttributeLink',
+              entity_data: linkData
+            };
 
-              debug('Sending direct operation');
-              await session.call([operation]);
-            } catch (directError) {
-              debug('Direct operation failed, trying alternative method');
-              await session.create('AssetVersionCustomAttributeLink', [linkData]);
-            }
+            debug('Sending direct operation');
+            await session.call([operation]);
           }
 
           // Update date if available
@@ -446,20 +439,14 @@ Date: ${chalk.red(formatDate(change.currentDate))} → ${chalk.green(formatDate(
               };
               debug(`Link data: ${JSON.stringify(linkData, null, 2)}`);
 
-              // Try direct operation first
-              try {
-                const operation = {
-                  action: 'create',
-                  entity_type: 'CustomAttributeLink',
-                  entity_data: linkData
-                };
+              const operation = {
+                action: 'create',
+                entity_type: 'CustomAttributeLink',
+                entity_data: linkData
+              };
 
-                debug('Sending direct operation');
-                await session.call([operation]);
-              } catch (directError) {
-                debug('Direct operation failed, trying alternative method');
-                await session.create('AssetVersionCustomAttributeLink', [linkData]);
-              }
+              debug('Sending direct operation');
+              await session.call([operation]);
             }
 
             // Update date if available

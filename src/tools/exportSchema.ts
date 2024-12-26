@@ -1,12 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 import { createObjectCsvWriter } from 'csv-writer';
-import { MOCK_SCHEMA } from '../schemas/mockSchema.ts';
 import type { Session } from '@ftrack/api';
 import { debug } from '../utils/debug.ts';
+import inquirer from 'inquirer';
 
 export interface SchemaField {
     type: string;
@@ -22,6 +21,12 @@ export interface CustomAttribute {
     type?: string;
 }
 
+export interface SampleData {
+    id?: string;
+    name?: string;
+    [key: string]: unknown;
+}
+
 export interface EntitySchema {
     type: string;
     baseFields: Record<string, SchemaField>;
@@ -29,8 +34,6 @@ export interface EntitySchema {
         standard: CustomAttribute[];
         links: CustomAttribute[];
     };
-    sample: any;
-    error?: string;
 }
 
 type Schema = Record<string, EntitySchema>;
@@ -52,170 +55,98 @@ const ENTITY_TYPES = [
     'User'
 ];
 
-async function generateSchema(session: Session | null): Promise<Schema> {
-    // If we're in test mode (no session), return mock schema
-    if (!session) {
-        debug('No session provided, returning mock schema');
-        return MOCK_SCHEMA;
-    }
+async function generateSchema(session: Session): Promise<Schema> {
+    const schema: Schema = {};
 
-    // The schema generator uses the same environment variables we already have
-    // No need to set them from session since they're already in process.env
-    
-    // Create temporary directory for schema generation
-    const tempDir = path.join(__dirname, '../../temp');
-    await fs.mkdir(tempDir, { recursive: true });
-    debug(`Created temporary directory: ${tempDir}`);
+    for (const entityType of ENTITY_TYPES) {
+        debug(`Fetching schema for ${entityType}...`);
 
-    try {
-        // Generate schema using ftrack-ts-schema-generator
-        debug('Generating schema using ftrack-ts-schema-generator...');
-        execSync('pnpm ftrack-ts-schema-generator ./temp schema.ts', {
-            stdio: 'inherit',
-            cwd: path.join(__dirname, '../..')
-        });
+        try {
+            // Get base schema from entity metadata
+            const metadataResponse = await session.query(`
+                select key from CustomAttributeConfiguration 
+                where object_type_id in (select id from ObjectType where name is "${entityType}")
+            `);
 
-        // Read generated schema
-        const schemaContent = await fs.readFile(path.join(tempDir, 'schema.ts'), 'utf8');
-        debug('Successfully read generated schema file');
+            // Get custom attribute links
+            const linksResponse = await session.query(`
+                select key, label, id 
+                from CustomAttributeLinkConfiguration 
+                where object_type_id in (select id from ObjectType where name is "${entityType}")
+            `);
 
-        // Parse the TypeScript interfaces into a more JSON-friendly format
-        const schema: Schema = {};
-        
-        for (const entityType of ENTITY_TYPES) {
-            debug(`Parsing schema for entity type: ${entityType}`);
-            const entitySchema = parseEntitySchema(schemaContent, entityType);
-            if (entitySchema) {
-                schema[entityType] = entitySchema;
-                debug(`Successfully parsed schema for ${entityType}`);
-            }
-        }
-
-        return schema;
-    } finally {
-        // For TypeScript export, we don't want to remove the temp directory
-        // as we'll need to copy the schema.ts file from there
-        if (!process.env.KEEP_TEMP) {
-            try {
-                debug('Cleaning up temporary directory');
-                await fs.rm(tempDir, { recursive: true, force: true });
-            } catch (error) {
-                console.warn('Failed to cleanup temporary files:', error);
-            }
-        }
-    }
-}
-
-function parseEntitySchema(schemaContent: string, entityType: string): EntitySchema | null {
-    try {
-        // Find the interface definition for the entity type
-        const interfaceRegex = new RegExp(`interface ${entityType}\\s*{([^}]+)}`, 'g');
-        const match = interfaceRegex.exec(schemaContent);
-        
-        if (!match) {
-            debug(`No schema found for ${entityType}`);
-            return null;
-        }
-
-        const interfaceContent = match[1];
-        const fields = interfaceContent.split('\n')
-            .map(line => line.trim())
-            .filter(line => line && !line.startsWith('//'));
-
-        const baseFields: Record<string, SchemaField> = {};
-        const customAttributes = {
-            standard: [] as CustomAttribute[],
-            links: [] as CustomAttribute[]
-        };
-
-        // Parse fields
-        fields.forEach(field => {
-            const [key, type] = field.split(':').map(s => s.trim());
-            if (!key || !type) return;
-
-            const cleanKey = key.replace('?', '');
-            const isRequired = !key.includes('?');
-            const isCustomAttribute = cleanKey.startsWith('custom_');
-
-            if (isCustomAttribute) {
-                const attrName = cleanKey.replace('custom_', '');
-                const isLink = type.includes('Link');
-
-                const attr: CustomAttribute = {
-                    id: `custom_${attrName}`,
-                    key: attrName,
-                    label: attrName,
-                    config: { type: convertTypeToConfig(type) },
-                    entity_type: entityType
-                };
-
-                if (isLink) {
-                    customAttributes.links.push({
-                        ...attr,
-                        type: 'link'
-                    });
-                } else {
-                    customAttributes.standard.push(attr);
-                }
-            } else {
-                baseFields[cleanKey] = {
-                    type: convertTypeToConfig(type),
-                    required: isRequired
-                };
-            }
-        });
-
-        return {
-            type: entityType,
-            baseFields,
-            customAttributes,
-            sample: null // Sample data not available from TypeScript schema
-        };
-    } catch (err) {
-        const error = err as Error;
-        console.error(`Error parsing schema for ${entityType}:`, error);
-        return {
-            type: entityType,
-            baseFields: {
+            // Use schema.ts structure for base fields
+            const baseFields: Record<string, SchemaField> = {
                 id: { type: 'string', required: true },
-                name: { type: 'string', required: true }
-            },
-            customAttributes: {
-                standard: [],
-                links: []
-            },
-            sample: null,
-            error: error.message || 'Unknown error occurred'
-        };
+                name: { type: 'string', required: true },
+                // Common fields across most entity types
+                metadata: { type: 'array', required: false },
+                custom_attributes: { type: 'array', required: false },
+                __entity_type__: { type: 'string', required: false },
+                __permissions: { type: 'object', required: false }
+            };
+
+            // Add type-specific fields based on entityType
+            switch (entityType) {
+                case 'Shot':
+                case 'Task':
+                    baseFields.status_id = { type: 'string', required: true };
+                    baseFields.type_id = { type: 'string', required: false };
+                    baseFields.parent_id = { type: 'string', required: false };
+                    break;
+                case 'AssetVersion':
+                    baseFields.asset_id = { type: 'string', required: false };
+                    baseFields.version = { type: 'number', required: false };
+                    baseFields.is_published = { type: 'boolean', required: true };
+                    break;
+                // Add more cases as needed
+            }
+
+            // Map custom attributes
+            const standardAttrs = (metadataResponse.data || []).map((attr: any) => ({
+                id: attr.id || `custom_${attr.key}`,
+                key: attr.key,
+                label: attr.key,
+                config: { type: 'string' }, // Default to string, update if needed
+                entity_type: entityType
+            }));
+
+            const linkAttrs = (linksResponse.data || []).map((link: any) => ({
+                id: link.id,
+                key: link.key,
+                label: link.label || link.key,
+                config: { type: 'link' },
+                entity_type: entityType,
+                type: 'link'
+            }));
+
+            schema[entityType] = {
+                type: entityType,
+                baseFields,
+                customAttributes: {
+                    standard: standardAttrs,
+                    links: linkAttrs
+                }
+            };
+
+            debug(`Successfully generated schema for ${entityType}`);
+        } catch (error) {
+            console.error(`Error generating schema for ${entityType}:`, error);
+            schema[entityType] = {
+                type: entityType,
+                baseFields: {
+                    id: { type: 'string', required: true },
+                    name: { type: 'string', required: true }
+                },
+                customAttributes: {
+                    standard: [],
+                    links: []
+                }
+            };
+        }
     }
-}
 
-function convertTypeToConfig(tsType: string): string {
-    // Remove any trailing semicolons and clean up the type
-    tsType = tsType.replace(/;$/, '').trim();
-    
-    // Handle union types
-    if (tsType.includes('|')) {
-        return 'string'; // Default to string for union types
-    }
-
-    // Handle array types
-    if (tsType.includes('[]')) {
-        return 'array';
-    }
-
-    // Map TypeScript types to ftrack types
-    const typeMap: Record<string, string> = {
-        'string': 'string',
-        'number': 'number',
-        'boolean': 'boolean',
-        'Date': 'date',
-        'any': 'string',
-        'object': 'object',
-        'Record<string, any>': 'object'
-    };
-
-    return typeMap[tsType] || 'string';
+    return schema;
 }
 
 async function exportToCSV(schema: Schema, outputPath: string): Promise<void> {
@@ -296,7 +227,6 @@ async function exportToYAML(schema: Schema, outputPath: string): Promise<void> {
 
 async function exportToJSON(schema: Schema, outputPath: string): Promise<void> {
     debug('Starting JSON export...');
-    // Use native JSON.stringify with proper formatting
     const jsonContent = JSON.stringify(schema, null, 2)
         // Ensure proper line endings for Windows compatibility
         .replace(/\n/g, '\r\n');
@@ -304,7 +234,7 @@ async function exportToJSON(schema: Schema, outputPath: string): Promise<void> {
     debug('JSON export completed successfully');
 }
 
-async function exportToTypeScript(schema: any, outputPath: string): Promise<string> {
+async function exportToTypeScript(schema: Record<string, EntitySchema>, outputPath: string): Promise<string> {
     debug('Starting TypeScript export...');
     const tempDir = path.join(process.cwd(), 'temp');
     const tempFile = path.join(tempDir, 'schema.ts');
@@ -337,7 +267,7 @@ async function exportToTypeScript(schema: any, outputPath: string): Promise<stri
     }
 }
 
-function generateTypeScriptSchema(schema: any): string {
+function generateTypeScriptSchema(schema: Record<string, EntitySchema>): string {
     let output = '// Generated Ftrack Schema Types\n\n';
     
     for (const [entityName, entitySchema] of Object.entries(schema)) {
@@ -350,7 +280,7 @@ function generateTypeScriptSchema(schema: any): string {
     return output;
 }
 
-function generateTypeScriptFields(entitySchema: any): string {
+function generateTypeScriptFields(entitySchema: EntitySchema): string {
     let fields = '';
     // Add base fields
     if (entitySchema.baseFields) {
@@ -377,35 +307,22 @@ function mapTypeToTypeScript(ftrackType: string): string {
         'number': 'number',
         'boolean': 'boolean',
         'date': 'Date',
-        'object': 'Record<string, any>',
-        'array': 'any[]',
+        'object': 'Record<string, unknown>',
+        'array': 'unknown[]',
         'link': 'string'
     };
-    return typeMap[ftrackType] || 'any';
+    return typeMap[ftrackType] || 'unknown';
 }
 
-export async function exportSchema(session: Session | null, format: 'json' | 'yaml' | 'csv' | 'ts'): Promise<string> {
+export async function exportSchema(session: Session, format: 'json' | 'yaml' | 'csv' | 'ts'): Promise<string> {
     try {
-        // Only check environment variables if we have a session
-        if (session && (!process.env.FTRACK_SERVER || !process.env.FTRACK_API_USER || !process.env.FTRACK_API_KEY)) {
-            throw new Error('Missing required environment variables for schema generation');
-        }
-
         debug(`Starting schema export in ${format} format...`);
-        
-        // Set flag to keep temp directory if exporting TypeScript
-        if (format === 'ts') {
-            process.env.KEEP_TEMP = 'true';
-        }
-
         const schema = await generateSchema(session);
 
-        // Ensure output directory exists
         const outputDir = path.join(process.cwd(), 'output');
         await fs.mkdir(outputDir, { recursive: true });
         debug(`Created output directory: ${outputDir}`);
 
-        // Determine file extension and export function based on format
         const formatConfig = {
             json: { ext: '.json', fn: exportToJSON },
             yaml: { ext: '.yaml', fn: exportToYAML },
@@ -413,33 +330,43 @@ export async function exportSchema(session: Session | null, format: 'json' | 'ya
             ts: { ext: '.ts', fn: exportToTypeScript }
         } as const;
 
-        const { ext, fn } = formatConfig[format as keyof typeof formatConfig] || formatConfig.json;
+        const { ext, fn } = formatConfig[format];
         const outputPath = path.join(outputDir, `schema${ext}`);
 
-        // Export schema in the specified format
         await fn(schema, outputPath);
-
         debug(`Schema exported successfully to ${outputPath}`);
-        
-        // Log a sample command to view the schema
+
         if (format === 'json') {
-            debug('Providing view command for JSON schema');
             console.log('\nTo view the schema, you can use:');
             console.log(`cat ${outputPath} | jq`);
         }
 
-        // Clean up temp directory after TypeScript export
-        if (format === 'ts') {
-            delete process.env.KEEP_TEMP;
-            const tempDir = path.join(__dirname, '../../temp');
-            try {
-                debug('Cleaning up temporary files after TypeScript export');
-                await fs.rm(tempDir, { recursive: true, force: true });
-            } catch (error) {
-                console.warn('Failed to cleanup temporary files:', error);
-            }
+        // Add post-export menu
+        const { nextAction } = await inquirer.prompt([{
+            type: 'list',
+            name: 'nextAction',
+            message: 'What would you like to do next?',
+            choices: [
+                { name: 'Export in another format', value: 'export_again' },
+                { name: 'Return to main menu', value: 'main_menu' }
+            ]
+        }]);
+
+        if (nextAction === 'export_again') {
+            const { newFormat } = await inquirer.prompt([{
+                type: 'list',
+                name: 'newFormat',
+                message: 'Select export format:',
+                choices: [
+                    { name: 'Export to JSON', value: 'json' },
+                    { name: 'Export to YAML', value: 'yaml' },
+                    { name: 'Export to CSV', value: 'csv' },
+                    { name: 'Generate TypeScript (.ts) file', value: 'ts' }
+                ].filter(choice => choice.value !== format) // Remove current format from choices
+            }]);
+            return exportSchema(session, newFormat);
         }
-        
+
         return outputPath;
     } catch (err) {
         const error = err as Error;

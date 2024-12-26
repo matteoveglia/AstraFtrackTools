@@ -1,8 +1,4 @@
-import type { 
-  TypedCustomAttributeValueMap, 
-  ContextCustomAttributeValue,
-  AssetVersion
-} from '../schemas/schema.ts';
+import type { ContextCustomAttributeValue } from '../schemas/schema.ts';
 
 // Core custom attribute interfaces
 export interface AssetVersionCustomAttributes extends ContextCustomAttributeValue {
@@ -18,27 +14,20 @@ export interface FtrackDatetime {
   };
 }
 
+// Base interface for custom attributes
+export interface BaseCustomAttribute {
+  key?: string;
+  value?: unknown;
+}
+
 // Type guards
-export function isDeliveredAttribute(attr: any): attr is AssetVersionCustomAttributes {
+export function isDeliveredAttribute(attr: BaseCustomAttribute): attr is AssetVersionCustomAttributes {
   return attr && 
          typeof attr === 'object' && 
          'key' in attr && 
          attr.key === 'Delivered' &&
          'value' in attr &&
          typeof attr.value === 'boolean';
-}
-
-export function isFtrackDatetime(value: any): value is FtrackDatetime {
-  return value && 
-         typeof value === 'object' && 
-         '__type__' in value && 
-         value.__type__ === 'datetime' &&
-         'value' in value &&
-         typeof value.value === 'object' &&
-         '__type__' in value.value &&
-         value.value.__type__ === 'datetime' &&
-         'value' in value.value &&
-         (typeof value.value.value === 'string' || value.value.value === null);
 }
 
 // Helpers

@@ -32,12 +32,15 @@ async function initSession(): Promise<Session> {
     return session;
 }
 
+// Add this type definition before the Tool interface
+type ToolResult = void | boolean | Record<string, unknown>;
+
 interface Tool {
     name: string;
     value: string;
     description: string;
     subMenu?: { name: string; value: string; }[];
-    action?: () => Promise<void>;  // Return type is void
+    action?: () => Promise<ToolResult>;
 }
 
 type ExportFormat = 'json' | 'yaml' | 'csv' | 'ts';
@@ -56,7 +59,7 @@ async function testFtrackCredentials(server: string, user: string, key: string):
     }
 }
 
-async function setAndTestCredentials(): Promise<boolean> {  // Changed return type to boolean
+async function setAndTestCredentials(): Promise<boolean> { 
     while (true) {  // Loop until valid credentials or user quits
         const answers = await inquirer.prompt([
             {
@@ -190,7 +193,8 @@ async function runTool(session: Session, tool: string, subOption?: ExportFormat)
             break;
         case 'exportSchema':
             if (subOption) {
-                await exportSchema(session, subOption);
+                const result = await exportSchema(session, subOption);
+                if (result) debug(`Export completed: ${result}`);
             }
             break;
         case 'inspectVersion':
@@ -232,7 +236,7 @@ async function main() {
             const success = await setAndTestCredentials();
             if (!success) {
                 console.log('Setup cancelled. Exiting...');
-                Deno.exit(0);  // Changed to 0 since this is a user choice
+                Deno.exit(0);
             }
         }
 
