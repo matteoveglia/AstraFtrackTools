@@ -68,6 +68,13 @@ function formatDate(dateString: string | null): string {
   return new Date(dateString).toISOString().split('T')[0];
 }
 
+function isDateSentAttribute(attr: ContextCustomAttributeValue): attr is ContextCustomAttributeValue & { 
+  key: 'dateSent';
+  value: string; 
+} {
+  return attr?.key === 'dateSent';
+}
+
 export async function updateLatestVersionsSent(session: Session): Promise<void> {
   try {
     debug('Starting updateLatestVersionsSent process');
@@ -121,6 +128,7 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
           id, version, asset.name, asset.parent.id,
           date, custom_attributes, is_published, task.parent.id
         from AssetVersion
+        where custom_attributes any (key is "dateSent")
       `),
       session.query(`
         select id, from_id, to_id
@@ -176,16 +184,34 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
 
       debug(`Found ${deliveredVersions.length} delivered versions for ${shot.name}`);
 
-      // Sort by date descending
-      const sortedVersions = deliveredVersions.sort((a, b) =>
-        new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
-      );
+      // Sort by dateSent first, then by version number if dates are equal
+      const sortedVersions = deliveredVersions.sort((a, b) => {
+        const aAttr = (a.custom_attributes as ContextCustomAttributeValue[])
+          .find(isDateSentAttribute);
+        const bAttr = (b.custom_attributes as ContextCustomAttributeValue[])
+          .find(isDateSentAttribute);
+        
+        const aDate = aAttr?.value || '';
+        const bDate = bAttr?.value || '';
+        
+        // Compare dates first
+        const dateComparison = new Date(bDate).getTime() - new Date(aDate).getTime();
+        
+        // If dates are equal, compare version numbers
+        if (dateComparison === 0) {
+          return (b.version || 0) - (a.version || 0);
+        }
+        
+        return dateComparison;
+      });
 
       if (sortedVersions.length > 0) {
         const latestVersion = sortedVersions[0];
         
-        // Get the date from the version
-        const dateSent = latestVersion.date ? new Date(latestVersion.date).toISOString() : null;
+        // Get the date from the version's custom attributes
+        const dateSentAttr = (latestVersion.custom_attributes as ContextCustomAttributeValue[])
+          .find(isDateSentAttribute);
+        const dateSent = dateSentAttr?.value || null;
 
         // Get current version details
         let currentVersionName = 'None';
