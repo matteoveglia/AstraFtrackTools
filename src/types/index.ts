@@ -1,2 +1,1 @@
-
-export * from './customAttributes.ts';
+export * from "./customAttributes.ts";
