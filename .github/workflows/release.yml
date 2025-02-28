@@ -7,6 +7,9 @@ on:
     paths:
       - 'package.json'
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -24,8 +27,14 @@ jobs:
         id: package_version
         run: echo "version=$(deno eval 'console.log(JSON.parse(Deno.readTextFileSync("./package.json")).version)')" >> $GITHUB_OUTPUT
 
-      - name: Build project
-        run: deno task build
+      - name: Build for Linux
+        run: deno compile --no-check --allow-env --allow-read --allow-write --allow-net --allow-sys --target x86_64-unknown-linux-gnu --output dist/astraftracktools-linux src/index.ts
+
+      - name: Build for Windows
+        run: deno compile --no-check --allow-env --allow-read --allow-write --allow-net --allow-sys --target x86_64-pc-windows-msvc --output dist/astraftracktools-windows.exe src/index.ts
+
+      - name: Build for macOS
+        run: deno compile --no-check --allow-env --allow-read --allow-write --allow-net --allow-sys --target x86_64-apple-darwin --output dist/astraftracktools-macos src/index.ts
 
       - name: Create tag
         run: git tag v${{ steps.package_version.outputs.version }}
@@ -43,3 +52,33 @@ jobs:
           release_name: Release v${{ steps.package_version.outputs.version }}
           draft: false
           prerelease: false
+
+      - name: Upload Linux Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/astraftracktools-linux
+          asset_name: astraftracktools-linux
+          asset_content_type: application/octet-stream
+
+      - name: Upload Windows Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/astraftracktools-windows.exe
+          asset_name: astraftracktools-windows.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload macOS Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/astraftracktools-macos
+          asset_name: astraftracktools-macos
+          asset_content_type: application/octet-stream
