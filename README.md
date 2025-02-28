@@ -13,28 +13,26 @@ A suite of tools to be used with Ftrack.
 
 ## Features
 
-- Inspect a task
+### 🗒️ Inspect a Task 
 
-> This will output the schema and data for a given task
+This will output the schema and data for a given task
 
-- Inspect a shot
+### 🎬 Inspect a Shot 
 
-> This will output the schema and data for a given shot
+This will output the schema and data for a given shot
 
-- Inspect a version
+### ✨ Inspect a Version
 
-> This will output the schema and data for a given version
+This will output the schema and data for a given version
 
-- Propagate thumbnails
+### 🖼️ Propagate Thumbnails
 
-> This tool allows you to update the shot thumbnail of any/all shots to that of
-> the latest version
+This tool allows you to update the shot thumbnail of any/all shots to that of
+the latest version
 
-- Update latest versions sent
+### 🔄 Update Latest Versions Sent
 
-> This tool grabs the latest delivered version for each shot and updates the
-> "latestVersionSent" and "latestVersionSentDate" custom attributes on the shot
-> level.
+This tool grabs the latest delivered version for each shot and updates the "latestVersionSent" and "latestVersionSentDate" custom attributes on the shot level.
 
 ## Custom Ftrack Attribute Requirements
 
@@ -47,6 +45,23 @@ and on the Shot:
 
 - latestVersionSent
 - latestVersionSentDate
+
+## Running from Binaries
+
+To run the application from binaries under "Releases"
+
+#### Windows/Linux
+
+Simply download the relevant file under Release and open it
+
+#### macOS
+
+Due to aggresive security restrictions on macOS, and me not wanting to pay for a developer license, I can't easily sign the binary to avoid a warning message. So you'll need to:
+1. Open Terminal
+2. Navigate to the downloads folder: ```cd ~/Downloads```   
+3. Remove quarantine flag: ```xattr -d com.apple.quarantine astraftracktools-macos```
+4. Make executable: ```chmod +x astraftracktools-macos```
+5. Run: ```./astraftracktools-macos```
 
 ## Installation
 
