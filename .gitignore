@@ -1,7 +1,6 @@
 # Ignore sensitive files
 .env
 .DS_Store
-.github
 schema.ts 
 ######### You will need to generate this schema.ts using the export schema tool in this app first
 
@@ -31,7 +30,6 @@ libDocs
 output
 
 # Deno specific
-deno.lock
 .env
 
 # Coverage directory

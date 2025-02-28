@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'  # This is fine if you have a package.json
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: "2.x"
+
+      - name: Get package.json version
+        id: package_version
+        run: echo "version=$(deno eval 'console.log(JSON.parse(Deno.readTextFileSync("./package.json")).version)')" >> $GITHUB_OUTPUT
+
+      - name: Build project
+        run: deno task build
+
+      - name: Create tag
+        run: git tag v${{ steps.package_version.outputs.version }}
+
+      - name: Push tag
+        run: git push origin v${{ steps.package_version.outputs.version }}
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.package_version.outputs.version }}
+          release_name: Release v${{ steps.package_version.outputs.version }}
+          draft: false
+          prerelease: false
