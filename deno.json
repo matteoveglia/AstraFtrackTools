@@ -1,4 +1,5 @@
 {
+  "nodeModulesDir": "auto",
   "imports": {
     "@ftrack/api": "npm:@ftrack/api@^1.11.2",
     "csv-writer": "npm:csv-writer@^1.6.0",
