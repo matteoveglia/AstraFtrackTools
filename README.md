@@ -6,7 +6,6 @@ A suite of tools to be used with Ftrack.
 ## Features
 
 ### 🗒️ | Inspect a Task 
-
 This will output the schema and data for a given task
 
 ### 🎬 | Inspect a Shot 
@@ -25,6 +24,10 @@ the latest version
 ### 🔄 | Update Latest Versions Sent
 
 This tool grabs the latest delivered version for each shot and updates the "latestVersionSent" and "latestVersionSentDate" custom attributes on the shot level.
+
+### 🔐 | Secure
+
+During normal usage all API calls are made directly to Ftrack and all API keys are stored locally and encrypted uniquely to your machine.
 
 ## Custom Ftrack Attribute Requirements
 
@@ -140,33 +143,21 @@ deno task build
 deno task test
 ```
 
-### Generating test coverage
-
-```bash
-deno task coverage
-```
-
 ## Project Structure
 
 ```
 ├── src/            # Source code
 │   ├── main.ts     # Entry point
 │   └── ...        # Other source files
-├── .env            # Environment variables
+├── .env            # Environment variables for testing
 ├── deno.json       # Deno configuration
 ├── deno.lock       # Dependency lock file
-└── package.json    # Node.js package configuration
+└── package.json    # Package configuration
 ```
 
 ## Contributing
 
-We welcome contributions! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a pull request
+We welcome contributions and suggestions!
 
 ## License
 

@@ -11,6 +11,10 @@ import { loadPreferences, savePreferences } from "./utils/preferences.ts";
 
 const machineHostname = Deno.hostname();
 
+interface ServerError extends Error {
+  errorCode?: string;
+}
+
 // Initialize ftrack session
 async function initSession(): Promise<Session> {
   debug("Loading preferences");
@@ -21,15 +25,32 @@ async function initSession(): Promise<Session> {
   }
 
   debug("Initializing ftrack session...");
-  const session = new Session(
-    prefs.FTRACK_SERVER,
-    prefs.FTRACK_API_USER,
-    prefs.FTRACK_API_KEY,
-    { autoConnectEventHub: false },
-  );
-  await session.initializing;
-  debug("Successfully connected to ftrack");
-  return session;
+  try {
+    const session = new Session(
+      prefs.FTRACK_SERVER,
+      prefs.FTRACK_API_USER,
+      prefs.FTRACK_API_KEY,
+      { autoConnectEventHub: false },
+    );
+    await session.initializing;
+    debug("Successfully connected to ftrack");
+    return session;
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      const serverError = error as ServerError;
+      if (serverError?.errorCode === 'api_credentials_invalid') {
+        console.error('\nError: Invalid API credentials. Please update your credentials.');
+        const updated = await setAndTestCredentials();
+        if (updated) {
+          return initSession(); // Retry with new credentials
+        }
+        throw new Error('Unable to proceed with invalid credentials');
+      }
+      throw error;
+    } else {
+      throw new Error(`Unknown error: ${error}`);
+    }
+  }
 }
 
 // Add this type definition before the Tool interface
@@ -55,13 +76,22 @@ async function testFtrackCredentials(
     const testSession = new Session(server, user, key, {
       autoConnectEventHub: false,
     });
-    // Just wait for session initialization - this will fail if credentials are invalid
     await testSession.initializing;
     debug("Credentials test successful");
     return true;
-  } catch (error) {
-    console.error("Failed to authenticate with Ftrack:", error);
-    return false;
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      const serverError = error as ServerError;
+      if (serverError?.errorCode === 'api_credentials_invalid') {
+        console.error('\nError: The supplied API key is not valid.');
+        return false;
+      }
+      console.error("Failed to authenticate with Ftrack:", error);
+      return false;
+    } else {
+      console.error("Failed to authenticate with Ftrack:", error);
+      return false;
+    }
   }
 }
 
@@ -303,8 +333,12 @@ async function main() {
         console.log("Goodbye!");
       }
     }
-  } catch (error) {
-    console.error("Error:", error);
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      console.error("Error:", error);
+    } else {
+      console.error("Unknown error:", error);
+    }
     Deno.exit(1);
   }
 }
