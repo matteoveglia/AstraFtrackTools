@@ -63,8 +63,26 @@ export async function inspectVersion(session: Session, versionId?: string) {
 
   debug("Custom attribute links retrieved");
 
+  // Get linked notes
+  debug("Fetching linked notes");
+  const notesQuery = await session.query(`
+    select 
+      id,
+      content,
+      date,
+      author.id,
+      author.first_name,
+      author.last_name
+    from Note
+    where parent_id is "${versionId}"
+  `);
+
+  debug("Linked notes retrieved");
+
   console.log("\n=== VERSION DETAILS ===\n");
   console.log(JSON.stringify(response.data[0], null, 2));
   console.log("\n=== CUSTOM ATTRIBUTE LINKS ===\n");
   console.log(JSON.stringify(linksQuery.data, null, 2));
+  console.log("\n=== LINKED NOTES ===\n");
+  console.log(JSON.stringify(notesQuery.data, null, 2));
 }

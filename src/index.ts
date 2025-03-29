@@ -8,6 +8,12 @@ import inspectTask from "./tools/inspectTask.ts";
 import { propagateThumbnails } from "./tools/propagateThumbnails.ts";
 import { debug } from "./utils/debug.ts";
 import { loadPreferences, savePreferences } from "./utils/preferences.ts";
+import { inspectNote } from "./tools/inspectNote.ts";
+import { manageLists } from "./tools/manageLists.ts";
+import { initInquirerPrompt } from "./utils/inquirerInit.ts";
+
+// Import Deno types (Deno is a global available at runtime)
+declare const Deno: any;
 
 const machineHostname = Deno.hostname();
 
@@ -24,7 +30,7 @@ async function initSession(): Promise<Session> {
     throw new Error("Missing required Ftrack credentials in preferences");
   }
 
-  debug("Initializing ftrack session...");
+  console.log("Initializing ftrack session...");
   try {
     const session = new Session(
       prefs.FTRACK_SERVER,
@@ -192,6 +198,16 @@ const tools: Tool[] = [
     description: "Inspect a specific task's details and time logs",
   },
   {
+    name: "Inspect Note",
+    value: "inspectNote",
+    description: "Inspect a specific note and its attachments",
+  },
+  {
+    name: "Manage Lists",
+    value: "manageLists",
+    description: "Manage lists and add shots to them by code",
+  },
+  {
     name: "Propagate Thumbnails",
     value: "propagateThumbnails",
     description:
@@ -222,7 +238,7 @@ const menuQuestion = {
 // After tool completion question
 const continueQuestion = {
   type: "confirm",
-  name: "continue",
+  name: "cont",
   message: "Would you like to run another tool?",
   default: true,
 } as const;
@@ -242,7 +258,17 @@ async function runTool(
     case "exportSchema":
       if (subOption) {
         const result = await exportSchema(session, subOption);
-        if (result) debug(`Export completed: ${result}`);
+        if (typeof result === 'object' && result !== null) {
+          // Use type assertion to handle the result correctly
+          const exportResult = result as { filename: string };
+          if ('filename' in exportResult) {
+            console.log(`Schema exported successfully to ${exportResult.filename}`);
+          } else {
+            console.log('Schema export completed');
+          }
+        } else {
+          console.log('Schema export completed');
+        }
       }
       break;
     case "inspectVersion":
@@ -254,94 +280,76 @@ async function runTool(
     case "inspectTask":
       await inspectTask(session);
       break;
+    case "inspectNote":
+      await inspectNote(session);
+      break;
+    case "manageLists":
+      await manageLists(session);
+      break;
     case "propagateThumbnails":
       await propagateThumbnails(session);
       break;
-    case "set-credentials": {
-      const credentialsTool = tools.find((t) => t.value === "set-credentials");
-      if (credentialsTool?.action) {
-        await credentialsTool.action();
-      } else {
-        throw new Error("Set credentials action not found");
+    case "set-credentials":
+      const selectedTool = tools.find((t) => t.value === tool);
+      if (selectedTool?.action) {
+        await selectedTool.action();
       }
       break;
-    }
     default:
-      console.error("Invalid tool selected");
+      console.log(`Unknown tool: ${tool}`);
   }
   debug(`Completed tool: ${tool}`);
 }
 
+// Main function
 async function main() {
+  console.log("Astra Ftrack Tools");
+  console.log("==================");
+
+  // Apply inquirer fix for Deno environment
+  initInquirerPrompt();
+
   try {
-    debug("Starting application...");
-    debug("Hostname is: " + machineHostname);
-
-    // Check for existing credentials
-    const prefs = await loadPreferences();
-    if (
-      !prefs.FTRACK_SERVER || !prefs.FTRACK_API_USER || !prefs.FTRACK_API_KEY
-    ) {
-      console.log("No Ftrack credentials found. Please configure them first.");
-      const success = await setAndTestCredentials();
-      if (!success) {
-        console.log("Setup cancelled. Exiting...");
-        Deno.exit(0);
-      }
-    }
-
-    // Initialize ftrack session
     const session = await initSession();
 
     let running = true;
+
     while (running) {
-      // Show main menu
+      // No need to apply fix before each prompt anymore
       const { tool } = await inquirer.prompt(menuQuestion);
 
       if (tool === "exit") {
         running = false;
-        console.log("Goodbye!");
         continue;
       }
 
-      if (tool === "exportSchema") {
-        const exportTool = tools.find((t) => t.value === "exportSchema");
-        if (!exportTool?.subMenu) {
-          throw new Error("Export schema submenu not found");
-        }
-        const { subOption } = await inquirer.prompt(
-          {
-            type: "list",
-            name: "subOption",
-            message: "Select export format:",
-            choices: exportTool.subMenu,
-          } as const,
-        );
-        await runTool(session, tool, subOption as ExportFormat);
+      const selectedTool = tools.find((t) => t.value === tool);
+
+      if (selectedTool?.subMenu) {
+        // No need to apply fix for submenu anymore
+        const { subOption } = await inquirer.prompt({
+          type: "list",
+          name: "subOption",
+          message: `Select ${selectedTool.name} option:`,
+          choices: selectedTool.subMenu,
+        });
+
+        await runTool(session, tool, subOption);
       } else {
-        // Run selected tool
         await runTool(session, tool);
       }
 
-      // Ask if user wants to continue
-      const { continue: shouldContinue } = await inquirer.prompt(
-        continueQuestion,
-      );
-      running = shouldContinue;
+      // No need to apply fix for continue prompt anymore
+      const { cont } = await inquirer.prompt(continueQuestion);
 
-      if (!shouldContinue) {
-        console.log("Goodbye!");
-      }
+      running = cont;
     }
+
+    console.log("Exiting Astra Ftrack Tools. Goodbye!");
   } catch (error: unknown) {
-    if (error instanceof Error) {
-      console.error("Error:", error);
-    } else {
-      console.error("Unknown error:", error);
-    }
+    console.error(error instanceof Error ? error.message : error);
     Deno.exit(1);
   }
 }
 
-// Run the application
 main();
