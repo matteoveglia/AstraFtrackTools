@@ -130,11 +130,11 @@ export async function manageLists(session: Session): Promise<void> {
     const { shotCodes } = await inquirer.prompt({
       type: 'editor',
       name: 'shotCodes',
-      message: 'Enter shot codes (comma separated or one per line):',
+      message: 'Enter shot codes (comma separated or one per line):\nIf this opens Vim, just paste, then type :wq and press Enter\n',
       default: '',
       validate: (input) => {
         if (!input.trim()) {
-          return 'Please enter at least one shot code';
+          return 'Please enter at least one shot code, press Enter to open editor';
         }
         return true;
       }
