@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Session } from "@ftrack/api";
-import { updateLatestVersionsSent } from "../tools/updateLatestVersions.js";
-import * as debugModule from "../utils/debug.js";
+import { updateLatestVersionsSent } from "../tools/updateLatestVersions.ts";
+import * as debugModule from "../utils/debug.ts";
 import { createInterface } from "readline";
 
 vi.mock("../utils/debug.js", () => ({

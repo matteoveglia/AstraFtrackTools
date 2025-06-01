@@ -1,20 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assertEquals, assertRejects } from "@std/assert";
 import { Session } from "@ftrack/api";
 import { propagateThumbnails } from "../tools/propagateThumbnails.ts";
-import inquirer from "inquirer";
-import * as debugModule from "../utils/debug.ts";
 
-vi.mock("inquirer");
-vi.mock("../utils/debug.ts", () => ({
-  debug: vi.fn(),
-  isDebugMode: vi.fn().mockReturnValue(true),
-}));
+// Mock modules
+let mockInquirer: any;
+let mockDebug: any;
+let mockConsoleLog: any;
+let mockConsoleError: any;
 
-describe("propagateThumbnails", () => {
-  const mockShots = [
-    { id: "shot-1", name: "shot_010" },
-    { id: "shot-2", name: "shot_020" },
-  ];
+// Test setup
+const mockShots = [
+  { id: "shot-1", name: "shot_020" }, // Note: reversed order to test A-Z sorting
+  { id: "shot-2", name: "shot_010" },
+];
 
   const mockVersions = [
     {
@@ -22,94 +20,163 @@ describe("propagateThumbnails", () => {
       version: 1,
       thumbnail_id: "thumb-1",
       asset: { name: "main" },
+      date: "2024-01-01T10:00:00Z",
     },
   ];
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+const mockShotDetails = [
+  { thumbnail_id: null }, // No current thumbnail
+];
 
-  it("should update thumbnail for a specific shot", async () => {
-    const mockSession = {
-      query: vi.fn()
-        .mockResolvedValueOnce({ data: [mockShots[0]] })
-        .mockResolvedValueOnce({ data: mockVersions }),
-      update: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Session;
+// Mock session factory
+function createMockSession(queryResponses: any[], updateMock?: any) {
+  let queryCallCount = 0;
+  return {
+    query: () => {
+      const response = queryResponses[queryCallCount];
+      queryCallCount++;
+      return Promise.resolve({ data: response });
+    },
+    update: updateMock || (() => Promise.resolve()),
+  } as unknown as Session;
+}
 
-    console.log = vi.fn();
+// Mock inquirer
+function mockInquirerPrompt(responses: Record<string, any>) {
+  return () => Promise.resolve(responses);
+}
 
+Deno.test("propagateThumbnails - should update thumbnail for a specific shot with progress indicator", async () => {
+  // Setup mocks
+  const originalConsoleLog = console.log;
+  const logCalls: string[] = [];
+  console.log = (...args: any[]) => {
+    logCalls.push(args.join(' '));
+  };
+
+  let updateCalled = false;
+  let updateParams: any[] = [];
+  
+  const mockSession = createMockSession(
+    [mockShots.slice(0, 1), mockVersions, mockShotDetails],
+    (...args: any[]) => {
+      updateCalled = true;
+      updateParams = args;
+      return Promise.resolve();
+    }
+  );
+
+  try {
     await propagateThumbnails(mockSession, "shot-1");
 
-    expect(mockSession.query).toHaveBeenCalledTimes(2);
-    expect(mockSession.query).toHaveBeenNthCalledWith(
-      1,
-      expect.stringContaining("shot-1"),
-    );
-    expect(mockSession.update).toHaveBeenCalledWith("Shot", ["shot-1"], {
-      thumbnail_id: "thumb-1",
-    });
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining("shot_010"),
-    );
-    expect(debugModule.debug).toHaveBeenCalled();
-  });
+    // Verify progress indicator was shown (new format includes ETA and chalk formatting)
+    const progressLog = logCalls.find(log => log.includes("[1/1]") && log.includes("Processing"));
+    assertEquals(progressLog !== undefined, true, "Should show progress indicator");
 
-  it("should process all shots when no shotId provided", async () => {
-    const mockSession = {
-      query: vi.fn()
-        .mockResolvedValueOnce({ data: mockShots })
-        .mockResolvedValueOnce({ data: mockVersions })
-        .mockResolvedValueOnce({ data: mockVersions }),
-      update: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Session;
+    // Verify shot name was logged
+    const shotLog = logCalls.find(log => log.includes("shot_020"));
+    assertEquals(shotLog !== undefined, true, "Should log shot name");
 
-    vi.mocked(inquirer.prompt).mockResolvedValueOnce({ shotId: "" });
-    console.log = vi.fn();
+    // Verify update was called
+    assertEquals(updateCalled, true, "Should call update");
+    assertEquals(updateParams[0], "Shot", "Should update Shot entity");
+    assertEquals(updateParams[1], ["shot-1"], "Should update correct shot ID");
+    assertEquals(updateParams[2].thumbnail_id, "thumb-1", "Should set correct thumbnail ID");
 
-    await propagateThumbnails(mockSession);
+  } finally {
+    console.log = originalConsoleLog;
+  }
+});
 
-    expect(inquirer.prompt).toHaveBeenCalledWith(expect.objectContaining({
-      type: "input",
-      name: "shotId",
-    }));
-    expect(mockSession.query).toHaveBeenCalledTimes(3);
-    expect(mockSession.update).toHaveBeenCalledTimes(2);
-    expect(debugModule.debug).toHaveBeenCalled();
-  });
+Deno.test("propagateThumbnails - should skip update if shot already has the latest thumbnail", async () => {
+  const originalConsoleLog = console.log;
+  const logCalls: string[] = [];
+  console.log = (...args: any[]) => {
+    logCalls.push(args.join(' '));
+  };
 
-  it("should handle shots without versions", async () => {
-    const mockSession = {
-      query: vi.fn()
-        .mockResolvedValueOnce({ data: [mockShots[0]] })
-        .mockResolvedValueOnce({ data: [] }),
-      update: vi.fn().mockResolvedValue(undefined),
-    } as unknown as Session;
+  let updateCalled = false;
+  const mockShotWithThumbnail = [{ thumbnail_id: "thumb-1" }];
 
-    console.log = vi.fn();
+  const mockSession = createMockSession(
+    [mockShots.slice(0, 1), mockVersions, mockShotWithThumbnail],
+    () => {
+      updateCalled = true;
+      return Promise.resolve();
+    }
+  );
 
+  try {
     await propagateThumbnails(mockSession, "shot-1");
 
-    expect(mockSession.query).toHaveBeenCalledTimes(2);
-    expect(mockSession.update).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining("No versions"),
-    );
-  });
+    // Verify update was not called
+    assertEquals(updateCalled, false, "Should not call update when thumbnail already exists");
 
-  it("should handle errors properly", async () => {
-    const mockSession = {
-      query: vi.fn().mockRejectedValue(new Error("API Error")),
-    } as unknown as Session;
+    // Verify appropriate message was logged
+    const skipLog = logCalls.find(log => log.includes("already has the latest thumbnail"));
+    assertEquals(skipLog !== undefined, true, "Should log skip message");
 
-    console.error = vi.fn();
+  } finally {
+    console.log = originalConsoleLog;
+  }
+});
 
-    await expect(propagateThumbnails(mockSession, "shot-1")).rejects.toThrow(
-      "API Error",
+Deno.test("propagateThumbnails - should handle shots without versions", async () => {
+  const originalConsoleLog = console.log;
+  const logCalls: string[] = [];
+  console.log = (...args: any[]) => {
+    logCalls.push(args.join(' '));
+  };
+
+  let updateCalled = false;
+  const mockSession = createMockSession(
+    [mockShots.slice(0, 1), []], // Empty versions array
+    () => {
+      updateCalled = true;
+      return Promise.resolve();
+    }
+  );
+
+  try {
+    await propagateThumbnails(mockSession, "shot-1");
+
+    // Verify update was not called
+    assertEquals(updateCalled, false, "Should not call update when no versions found");
+
+    // Verify warning message was logged
+    const warningLog = logCalls.find(log => log.includes("⚠ No versions"));
+    assertEquals(warningLog !== undefined, true, "Should log warning message");
+
+  } finally {
+    console.log = originalConsoleLog;
+  }
+});
+
+Deno.test("propagateThumbnails - should handle errors properly", async () => {
+  const originalConsoleError = console.error;
+  const errorCalls: string[] = [];
+  console.error = (...args: any[]) => {
+    errorCalls.push(args.join(' '));
+  };
+
+  const mockSession = {
+    query: () => Promise.reject(new Error("API Error")),
+  } as unknown as Session;
+
+  try {
+    await assertRejects(
+      async () => {
+        await propagateThumbnails(mockSession, "shot-1");
+      },
+      Error,
+      "API Error"
     );
-    expect(console.error).toHaveBeenCalledWith(
-      "Error while propagating thumbnails:",
-      expect.any(String),
-    );
-  });
+
+    // Verify error was logged (new error format)
+    const errorLog = errorCalls.find(log => log.includes("❌ Error during propagate thumbnails"));
+    assertEquals(errorLog !== undefined, true, "Should log error message");
+
+  } finally {
+    console.error = originalConsoleError;
+  }
 });

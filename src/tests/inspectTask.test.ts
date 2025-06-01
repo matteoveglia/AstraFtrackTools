@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Session } from "@ftrack/api";
-import inspectTask from "../tools/inspectTask.js";
+import inspectTask from "../tools/inspectTask.ts";
 import inquirer from "inquirer";
-import * as debugModule from "../utils/debug.js";
+import * as debugModule from "../utils/debug.ts";
 
 vi.mock("inquirer");
 vi.mock("../utils/debug.js", () => ({

@@ -158,12 +158,21 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
 
     debug(`Found ${shotsResponse.data.length} shots to process`);
 
+    // Sort shots alphabetically for consistent processing order
+    const shots = (shotsResponse.data as Shot[]).sort((a, b) => a.name.localeCompare(b.name));
+
     // Process each shot
     const proposedChanges: ProposedChange[] = [];
     const noDeliveredVersions: Array<{ name: string; parent: string }> = [];
+    const totalShots = shots.length;
+    let processedCount = 0;
 
-    for (const shot of shotsResponse.data as Shot[]) {
-      debug(`Processing shot: ${shot.name}`);
+    for (const shot of shots) {
+      processedCount++;
+      const progress = `${processedCount.toString().padStart(3, '0')}/${totalShots.toString().padStart(3, '0')}`;
+      
+      console.log(`[${progress}] Processing shot: ${shot.name}`);
+      debug(`Processing shot: ${shot.name} (${shot.id})`);
 
       // Use map lookups
       const currentLink = linkMap[shot.id];
@@ -419,7 +428,7 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
           console.error(`Failed to update shot ${change.shotName}:`, error);
         }
       }
-      console.log('\nAll updates completed successfully!');
+      console.log(`\n✅ All updates completed successfully! Processed ${totalShots} shots, updated ${proposedChanges.length} shots.`);
     } else if (action === 'review') {
       // Replace individual prompts with inquirer
       for (const change of proposedChanges) {
@@ -508,7 +517,7 @@ Date: ${chalk.red(formatDate(change.currentDate))} → ${chalk.green(formatDate(
           console.log(`Skipped ${change.shotName}`);
         }
       }
-      console.log('\nFinished processing all selected updates.');
+      console.log(`\n✅ Finished processing all selected updates. Processed ${totalShots} shots total.`);
     }
 
   } catch (error) {

@@ -27,7 +27,13 @@ async function initSession(): Promise<Session> {
   const prefs = await loadPreferences();
 
   if (!prefs.FTRACK_SERVER || !prefs.FTRACK_API_USER || !prefs.FTRACK_API_KEY) {
-    throw new Error("Missing required Ftrack credentials in preferences");
+    console.log("\n🚀 Welcome to Astra Ftrack Tools!");
+    console.log("First-time setup required. Let's configure your Ftrack credentials.\n");
+    const configured = await setAndTestCredentials();
+    if (!configured) {
+      throw new Error("Setup cancelled - credentials are required to proceed");
+    }
+    return initSession(); // Retry with new credentials
   }
 
   console.log("Initializing ftrack session...");

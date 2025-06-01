@@ -1,5 +1,5 @@
 # AstraFtrackTools
-_by Astra Lumen Images Inc._
+_by [Astra Lumen Images Inc.](https://astralumen.co/)_
 
 A suite of tools to be used with Ftrack.
 
@@ -18,8 +18,7 @@ This will output the schema and data for a given version
 
 ### 🖼️ | Propagate Thumbnails
 
-This tool allows you to update the shot thumbnail of any/all shots to that of
-the latest version
+Updates shot thumbnails with thumbnails from their latest asset versions. Features A-Z sorting, progress tracking with ETA, and smart detection of existing thumbnails to avoid unnecessary updates.
 
 ### 🔄 | Update Latest Versions Sent
 
@@ -79,18 +78,19 @@ chmod +x astraftracktools-macos
 ```
 
 ## First Setup
-On first run, the tool will ask you for your Ftrack credentials, specificcally:
-- Ftrack Server URL (e.g. https://yourcompany.ftrackapp.com)
-- Ftrack API User (e.g. your ftrack associated email)
-- Ftrack API Key
+On first run, the app will ask you for your Ftrack credentials and automatically test them:
+- **Ftrack Server URL** (e.g. https://yourcompany.ftrackapp.com)
+- **Ftrack API User** (e.g. your ftrack associated email)  
+- **Ftrack API Key** (secure password input)
 
-The easiest way to obtain your API key is through your Ftrack settings:
-1. Go to My Account, top right of Ftrack
-2. Go to Security Settings
-3. Under Personal API Key click on Generate New Key
-- Note: This key will only appear once, it can be revoked and regenerated at any time.
+### Getting Your API Key:
+1. Log into your Ftrack instance
+2. Go to **My Account** (top right)
+3. Navigate to **Security Settings**
+4. Under **Personal API Key**, click **Generate New Key**
+   - ⚠️ This key will only appear once and can be revoked/regenerated anytime
 
-Once you have entered your credentials, the tool will configure itself and be ready to use.
+The tool will automatically test your credentials and securely store them locally. You can update credentials anytime using the "Set Ftrack Credentials" option in the main menu.
 
 # Development
 
