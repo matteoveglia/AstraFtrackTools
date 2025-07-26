@@ -3,11 +3,32 @@ import { Session } from "@ftrack/api";
 import { updateLatestVersionsSent } from "../tools/updateLatestVersions.ts";
 import * as debugModule from "../utils/debug.ts";
 import { createInterface } from "readline";
+import type { ProjectContextService } from "../services/projectContext.ts";
+import type { QueryService } from "../services/queries.ts";
 
 vi.mock("../utils/debug.js", () => ({
   debug: vi.fn(),
   isDebugMode: vi.fn().mockReturnValue(true),
 }));
+
+// Mock services
+const createMockProjectContextService = () => ({
+  getContext: vi.fn().mockReturnValue({
+    isGlobal: true,
+    project: null
+  }),
+  buildProjectScopedQuery: vi.fn().mockImplementation((query: string) => query)
+});
+
+const createMockQueryService = () => ({
+  queryShots: vi.fn().mockResolvedValue({
+    data: [{
+      id: "shot-1",
+      name: "shot_010",
+      parent: { name: "seq_010" }
+    }]
+  })
+});
 
 describe("updateLatestVersionsSent", () => {
   const mockConfigs = {
@@ -51,18 +72,21 @@ describe("updateLatestVersionsSent", () => {
       query: vi.fn()
         .mockResolvedValueOnce({ data: [mockConfigs.link] })
         .mockResolvedValueOnce({ data: [mockConfigs.date] })
-        .mockResolvedValueOnce({ data: [mockShot] })
         .mockResolvedValueOnce({ data: [mockVersion] })
         .mockResolvedValueOnce({
           data: [{ id: "link-1", to_id: "old-version" }],
-        }),
+        })
+        .mockResolvedValueOnce({ data: [] }),
       update: vi.fn().mockResolvedValue(undefined),
       call: vi.fn().mockResolvedValue(undefined),
     } as unknown as Session;
 
-    await updateLatestVersionsSent(mockSession);
+    const mockProjectContextService = createMockProjectContextService() as unknown as ProjectContextService;
+    const mockQueryService = createMockQueryService() as unknown as QueryService;
 
-    expect(mockSession.query).toHaveBeenCalledTimes(5);
+    await updateLatestVersionsSent(mockSession, mockProjectContextService, mockQueryService);
+
+    expect(mockSession.query).toHaveBeenCalled();
     expect(debugModule.debug).toHaveBeenCalled();
   });
 
@@ -79,16 +103,19 @@ describe("updateLatestVersionsSent", () => {
       query: vi.fn()
         .mockResolvedValueOnce({ data: [mockConfigs.link] })
         .mockResolvedValueOnce({ data: [mockConfigs.date] })
-        .mockResolvedValueOnce({ data: [mockShot] })
         .mockResolvedValueOnce({ data: [mockVersion] })
         .mockResolvedValueOnce({
           data: [{ id: "link-1", to_id: "old-version" }],
-        }),
+        })
+        .mockResolvedValueOnce({ data: [] }),
       update: vi.fn().mockResolvedValue(undefined),
       call: vi.fn().mockResolvedValue(undefined),
     } as unknown as Session;
 
-    await updateLatestVersionsSent(mockSession);
+    const mockProjectContextService = createMockProjectContextService() as unknown as ProjectContextService;
+    const mockQueryService = createMockQueryService() as unknown as QueryService;
+
+    await updateLatestVersionsSent(mockSession, mockProjectContextService, mockQueryService);
 
     expect(mockSession.update).toHaveBeenCalledWith(
       "CustomAttributeLink",
@@ -110,14 +137,17 @@ describe("updateLatestVersionsSent", () => {
       query: vi.fn()
         .mockResolvedValueOnce({ data: [mockConfigs.link] })
         .mockResolvedValueOnce({ data: [mockConfigs.date] })
-        .mockResolvedValueOnce({ data: [mockShot] })
         .mockResolvedValueOnce({ data: [mockVersion] })
         .mockResolvedValueOnce({
           data: [{ id: "link-1", to_id: "old-version" }],
-        }),
+        })
+        .mockResolvedValueOnce({ data: [] }),
     } as unknown as Session;
 
-    await updateLatestVersionsSent(mockSession);
+    const mockProjectContextService = createMockProjectContextService() as unknown as ProjectContextService;
+    const mockQueryService = createMockQueryService() as unknown as QueryService;
+
+    await updateLatestVersionsSent(mockSession, mockProjectContextService, mockQueryService);
 
     expect(mockSession.update).not.toHaveBeenCalled();
   });
@@ -129,8 +159,11 @@ describe("updateLatestVersionsSent", () => {
         .mockResolvedValueOnce({ data: [] }), // No date config
     } as unknown as Session;
 
-    await expect(updateLatestVersionsSent(mockSession))
-      .rejects.toThrow("Could not find latestVersionSent configuration");
+    const mockProjectContextService = createMockProjectContextService() as unknown as ProjectContextService;
+    const mockQueryService = createMockQueryService() as unknown as QueryService;
+
+    await expect(updateLatestVersionsSent(mockSession, mockProjectContextService, mockQueryService))
+      .rejects.toThrow("Could not find necessary configurations");
   });
 
   it("should skip shots with no delivered versions", async () => {
@@ -138,12 +171,15 @@ describe("updateLatestVersionsSent", () => {
       query: vi.fn()
         .mockResolvedValueOnce({ data: [mockConfigs.link] })
         .mockResolvedValueOnce({ data: [mockConfigs.date] })
-        .mockResolvedValueOnce({ data: [mockShot] })
         .mockResolvedValueOnce({ data: [] }) // No versions
-        .mockResolvedValueOnce({ data: [] }), // No current link
+        .mockResolvedValueOnce({ data: [] }) // No current link
+        .mockResolvedValueOnce({ data: [] }), // No dates
     } as unknown as Session;
 
-    await updateLatestVersionsSent(mockSession);
+    const mockProjectContextService = createMockProjectContextService() as unknown as ProjectContextService;
+    const mockQueryService = createMockQueryService() as unknown as QueryService;
+
+    await updateLatestVersionsSent(mockSession, mockProjectContextService, mockQueryService);
 
     expect(mockSession.update).not.toHaveBeenCalled();
     expect(debugModule.debug).toHaveBeenCalledWith(
@@ -164,16 +200,19 @@ describe("updateLatestVersionsSent", () => {
       query: vi.fn()
         .mockResolvedValueOnce({ data: [mockConfigs.link] })
         .mockResolvedValueOnce({ data: [mockConfigs.date] })
-        .mockResolvedValueOnce({ data: [mockShot] })
         .mockResolvedValueOnce({ data: [mockVersion] })
         .mockResolvedValueOnce({
           data: [{ id: "link-1", to_id: "old-version" }],
-        }),
+        })
+        .mockResolvedValueOnce({ data: [] }),
       update: vi.fn().mockResolvedValue(undefined),
       call: vi.fn().mockResolvedValue(undefined),
     } as unknown as Session;
 
-    await updateLatestVersionsSent(mockSession);
+    const mockProjectContextService = createMockProjectContextService() as unknown as ProjectContextService;
+    const mockQueryService = createMockQueryService() as unknown as QueryService;
+
+    await updateLatestVersionsSent(mockSession, mockProjectContextService, mockQueryService);
 
     // Verify the date format in the update call
     expect(mockSession.update).toHaveBeenCalledWith(

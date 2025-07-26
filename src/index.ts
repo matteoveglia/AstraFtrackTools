@@ -11,18 +11,27 @@ import { loadPreferences, savePreferences } from "./utils/preferences.ts";
 import { inspectNote } from "./tools/inspectNote.ts";
 import { manageLists } from "./tools/manageLists.ts";
 import { initInquirerPrompt } from "./utils/inquirerInit.ts";
+import { selectProject, displayProjectContext, type ProjectContext } from "./utils/projectSelection.ts";
+import { SessionService } from "./services/session.ts";
+import { ProjectContextService } from "./services/projectContext.ts";
+import { QueryService } from "./services/queries.ts";
 
 // Import Deno types (Deno is a global available at runtime)
 declare const Deno: any;
 
 const machineHostname = Deno.hostname();
 
+// Global services
+let sessionService: SessionService;
+let projectContextService: ProjectContextService;
+let queryService: QueryService;
+
 interface ServerError extends Error {
   errorCode?: string;
 }
 
-// Initialize ftrack session
-async function initSession(): Promise<Session> {
+// Initialize ftrack session and project context
+async function initSession(): Promise<{ session: Session; projectContext: ProjectContext }> {
   debug("Loading preferences");
   const prefs = await loadPreferences();
 
@@ -46,7 +55,21 @@ async function initSession(): Promise<Session> {
     );
     await session.initializing;
     debug("Successfully connected to ftrack");
-    return session;
+    
+    // Initialize services
+    sessionService = new SessionService(session);
+    
+    // Project selection
+    console.log("\n📁 Project Selection");
+    console.log("===================");
+    const projectContext = await selectProject(session);
+    
+    projectContextService = new ProjectContextService(projectContext);
+    queryService = new QueryService(sessionService, projectContextService);
+    
+    console.log(`\n✅ Ready! Operating in: ${displayProjectContext(projectContext)}\n`);
+    
+    return { session, projectContext };
   } catch (error: unknown) {
     if (error instanceof Error) {
       const serverError = error as ServerError;
@@ -172,12 +195,12 @@ async function setAndTestCredentials(): Promise<boolean> {
 // Available tools
 const tools: Tool[] = [
   {
-    name: "Update Latest Versions Sent",
+    name: "🌐 Update Latest Versions Sent",
     value: "updateVersions",
     description: "Updates all shots with their latest delivered version",
   },
   {
-    name: "Export Schema",
+    name: "🌐 Export Schema",
     value: "exportSchema",
     description:
       "Exports schema information for major entity types including custom attributes",
@@ -189,46 +212,46 @@ const tools: Tool[] = [
     ],
   },
   {
-    name: "Inspect Version",
+    name: "🌐 Inspect Version",
     value: "inspectVersion",
     description: "Inspect a specific version's relationships",
   },
   {
-    name: "Inspect Shot",
+    name: "🌐 Inspect Shot",
     value: "inspectShot",
     description: "Inspect a specific shot's details and relationships",
   },
   {
-    name: "Inspect Task",
+    name: "🌐 Inspect Task",
     value: "inspectTask",
     description: "Inspect a specific task's details and time logs",
   },
   {
-    name: "Inspect Note",
+    name: "🌐 Inspect Note",
     value: "inspectNote",
     description: "Inspect a specific note and its attachments",
   },
   {
-    name: "Manage Lists",
+    name: "📁 Manage Lists",
     value: "manageLists",
     description: "Manage lists and add shots to them by code",
   },
   {
-    name: "Propagate Thumbnails",
+    name: "📁 Propagate Thumbnails",
     value: "propagateThumbnails",
     description:
       "Update shots with thumbnails from their latest asset versions",
   },
   {
-    name: "Set Ftrack Credentials",
+    name: "🌐 Set Ftrack Credentials",
     value: "set-credentials",
     description: "Configure Ftrack API credentials",
     action: setAndTestCredentials,
   },
 ];
 
-// Main menu questions
-const menuQuestion = {
+// Main menu questions - will be updated with project context
+let menuQuestion = {
   type: "list",
   name: "tool",
   message: "Select a tool to run:",
@@ -237,9 +260,28 @@ const menuQuestion = {
       name: `${tool.name} - ${tool.description}`,
       value: tool.value,
     })),
+    { name: "Change Project", value: "change-project" },
     { name: "Exit", value: "exit" },
   ],
 } as const;
+
+// Function to update menu with project context
+function updateMenuWithContext(projectContext: ProjectContext) {
+  const contextDisplay = displayProjectContext(projectContext);
+  return {
+    type: "list" as const,
+    name: "tool" as const,
+    message: `[${contextDisplay}] Select a tool to run:`,
+    choices: [
+      ...tools.map((tool) => ({
+        name: `${tool.name} - ${tool.description}`,
+        value: tool.value,
+      })),
+      { name: "Change Project", value: "change-project" },
+      { name: "Exit", value: "exit" },
+    ],
+  };
+}
 
 // After tool completion question
 const continueQuestion = {
@@ -259,7 +301,7 @@ async function runTool(
   );
   switch (tool) {
     case "updateVersions":
-      await updateLatestVersionsSent(session);
+      await updateLatestVersionsSent(session, projectContextService, queryService);
       break;
     case "exportSchema":
       if (subOption) {
@@ -290,10 +332,10 @@ async function runTool(
       await inspectNote(session);
       break;
     case "manageLists":
-      await manageLists(session);
+      await manageLists(session, projectContextService, queryService);
       break;
     case "propagateThumbnails":
-      await propagateThumbnails(session);
+      await propagateThumbnails(session, projectContextService, queryService);
       break;
     case "set-credentials":
       const selectedTool = tools.find((t) => t.value === tool);
@@ -316,23 +358,35 @@ async function main() {
   initInquirerPrompt();
 
   try {
-    const session = await initSession();
+    const { session, projectContext } = await initSession();
+    let currentProjectContext = projectContext;
 
     let running = true;
 
     while (running) {
-      // No need to apply fix before each prompt anymore
-      const { tool } = await inquirer.prompt(menuQuestion);
+      // Use the appropriate menu based on project context
+      const currentMenu = currentProjectContext 
+        ? updateMenuWithContext(currentProjectContext)
+        : menuQuestion;
+      
+      const { tool } = await inquirer.prompt(currentMenu);
 
       if (tool === "exit") {
         running = false;
         continue;
       }
 
+      if (tool === "change-project") {
+        // Re-run project selection
+        currentProjectContext = await selectProject(session);
+        // Update the project context service with the new context
+        projectContextService.setContext(currentProjectContext);
+        continue;
+      }
+
       const selectedTool = tools.find((t) => t.value === tool);
 
       if (selectedTool?.subMenu) {
-        // No need to apply fix for submenu anymore
         const { subOption } = await inquirer.prompt({
           type: "list",
           name: "subOption",
@@ -345,7 +399,6 @@ async function main() {
         await runTool(session, tool);
       }
 
-      // No need to apply fix for continue prompt anymore
       const { cont } = await inquirer.prompt(continueQuestion);
 
       running = cont;

@@ -17,7 +17,7 @@
     "build-windows": "deno compile --no-check --allow-run --allow-env --allow-read --allow-write --allow-net --allow-sys --target x86_64-pc-windows-msvc --output dist/astraftracktools-windows.exe src/index.ts",
     "build-macos": "deno compile --no-check --allow-run --allow-env --allow-read --allow-write --allow-net --allow-sys --target x86_64-apple-darwin --output dist/astraftracktools-macos src/index.ts",
     "start": "deno run --allow-env --allow-read --allow-write --allow-net --allow-sys src/index.ts",
-    "dev": "deno run --allow-env --allow-read --allow-write --allow-net --watch src/index.ts",
+    "dev": "deno run --allow-env --allow-read --allow-write --allow-net --allow-sys --watch src/index.ts",
     "dev:debug": "deno run --allow-env --allow-read --allow-write --allow-net --allow-sys --watch src/index.ts DEBUG",
     "test": "deno test --allow-read --allow-write --allow-env",
     "coverage": "deno test --coverage"

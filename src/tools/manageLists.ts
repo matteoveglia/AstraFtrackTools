@@ -22,10 +22,23 @@ import type {
   ListObject
 } from '../schemas/schema.ts';
 import { debug } from '../utils/debug.ts';
+import type { ProjectContextService } from '../services/projectContext.ts';
+import type { QueryService } from '../services/queries.ts';
 
-export async function manageLists(session: Session): Promise<void> {
+export async function manageLists(
+  session: Session,
+  projectContextService: ProjectContextService,
+  queryService: QueryService
+): Promise<void> {
   try {
     debug('Starting manageLists process');
+
+    const projectContext = projectContextService.getContext();
+    const contextInfo = projectContext.isGlobal 
+      ? "all projects (site-wide)" 
+      : `project "${projectContext.project?.name}"`;
+    
+    console.log(chalk.blue(`\nManaging lists for: ${contextInfo}\n`));
 
     // Fetch all list categories
     const categoriesResponse = await session.query(`
@@ -41,11 +54,13 @@ export async function manageLists(session: Session): Promise<void> {
     const categories = categoriesResponse.data as ListCategory[];
     debug(`Found ${categories.length} list categories`);
 
-    // Fetch all lists with their categories
-    const listsResponse = await session.query(`
+    // Build project-scoped query for lists
+    const listsQuery = projectContextService.buildProjectScopedQuery(`
       select id, name, category.id, category.name, project.name
       from List
     `);
+
+    const listsResponse = await session.query(listsQuery);
 
     if (!listsResponse.data || listsResponse.data.length === 0) {
       console.log(chalk.yellow('No lists found.'));
@@ -144,8 +159,8 @@ export async function manageLists(session: Session): Promise<void> {
     const parsedCodes = shotCodes
       .replace(/\r\n/g, '\n')
       .split(/[\n,]/)
-      .map(code => code.trim())
-      .filter(code => code.length > 0);
+      .map((code: string) => code.trim())
+      .filter((code: string) => code.length > 0);
     
     if (parsedCodes.length === 0) {
       console.log(chalk.yellow('No valid shot codes provided.'));
@@ -154,19 +169,19 @@ export async function manageLists(session: Session): Promise<void> {
 
     debug(`Parsed ${parsedCodes.length} shot codes: ${parsedCodes.join(', ')}`);
 
-    // Query shots that match the provided codes
-    const shotQuery = `
+    // Query shots that match the provided codes using project scoping
+    const shotQuery = projectContextService.buildProjectScopedQuery(`
       select id, name, parent.name
       from Shot
-      where name in (${parsedCodes.map(code => `"${code}"`).join(',')})
-    `;
+      where name in (${parsedCodes.map((code: string) => `"${code}"`).join(',')})
+    `);
     
     const shotsResponse = await session.query(shotQuery);
     const foundShots = (shotsResponse.data || []) as Shot[];
     
     // Compare found shots against requested codes
     const foundShotNames = foundShots.map(shot => shot.name);
-    const notFoundCodes = parsedCodes.filter(code => !foundShotNames.includes(code));
+    const notFoundCodes = parsedCodes.filter((code: string) => !foundShotNames.includes(code));
     
     if (notFoundCodes.length > 0) {
       console.log(chalk.yellow(`\nWarning: The following shot codes were not found:`));
@@ -244,4 +259,4 @@ export async function manageLists(session: Session): Promise<void> {
     console.error('Error during list management:', error);
     throw error;
   }
-} 
+}

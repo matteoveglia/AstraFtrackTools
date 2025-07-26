@@ -30,6 +30,8 @@ import type {
 } from '../schemas/schema.ts';
 import { isDeliveredAttribute } from '../types/index.ts';
 import { debug } from '../utils/debug.ts';
+import type { ProjectContextService } from '../services/projectContext.ts';
+import type { QueryService } from '../services/queries.ts';
 
 interface ProposedChange {
   shotName: string;
@@ -75,9 +77,20 @@ function isDateSentAttribute(attr: ContextCustomAttributeValue): attr is Context
   return attr?.key === 'dateSent';
 }
 
-export async function updateLatestVersionsSent(session: Session): Promise<void> {
+export async function updateLatestVersionsSent(
+  session: Session,
+  projectContextService: ProjectContextService,
+  queryService: QueryService
+): Promise<void> {
   try {
     debug('Starting updateLatestVersionsSent process');
+
+    const projectContext = projectContextService.getContext();
+    const contextInfo = projectContext.isGlobal 
+      ? "all projects (site-wide)" 
+      : `project "${projectContext.project?.name}"`;
+    
+    console.log(chalk.blue(`\nUpdating latest versions for: ${contextInfo}\n`));
 
     const { mode } = await inquirer.prompt([{
       type: 'list',
@@ -117,49 +130,65 @@ export async function updateLatestVersionsSent(session: Session): Promise<void> 
     debug(`Found configuration ID: ${configId}`);
     debug(`Found date configuration ID: ${dateConfigId}`);
 
-    // Fetch all necessary data in bulk
-    const [shotsResponse, versionsResponse, linksResponse, datesResponse] = await Promise.all([
-      session.query(`
-        select id, name, parent.name
-        from Shot
-      `),
-      session.query(`
-        select 
-          id, version, asset.name, asset.parent.id,
-          date, custom_attributes, is_published, task.parent.id
-        from AssetVersion
-        where custom_attributes any (key is "dateSent")
-      `),
-      session.query(`
-        select id, from_id, to_id
-        from CustomAttributeLink
-        where configuration.key is "latestVersionSent"
-      `),
-      session.query(`
-        select entity_id, value
-        from ContextCustomAttributeValue
-        where configuration_id is "${dateConfigId}"
-      `)
+    // Use QueryService to get project-scoped shots
+    const shotsResponse = await queryService.queryShots();
+    const shots = shotsResponse.data as Shot[];
+
+    // Build project-scoped queries for other data
+    const versionQuery = projectContextService.buildProjectScopedQuery(`
+      select 
+        id, version, asset.name, asset.parent.id,
+        date, custom_attributes, is_published, task.parent.id
+      from AssetVersion
+      where custom_attributes any (key is "dateSent")
+    `);
+
+    const linksQuery = projectContextService.buildProjectScopedQuery(`
+      select id, from_id, to_id
+      from CustomAttributeLink
+      where configuration.key is "latestVersionSent"
+    `);
+
+    const datesQuery = projectContextService.buildProjectScopedQuery(`
+      select entity_id, value
+      from ContextCustomAttributeValue
+      where configuration_id is "${dateConfigId}"
+    `);
+
+    // Fetch all necessary data in bulk with project scoping
+    const [versionsResponse, linksResponse, datesResponse] = await Promise.all([
+      session.query(versionQuery),
+      session.query(linksQuery),
+      session.query(datesQuery)
     ]);
 
     // Create lookup maps
     const linkMap: LinkMap = {};
+    // Filter links to only include those for shots in the current project
+    const shotIds = new Set(shots.map(shot => shot.id));
     linksResponse.data.forEach(link => {
-      linkMap[link.from_id] = {
-        linkId: link.id,
-        versionId: link.to_id
-      };
+      // Only include links for shots in the current project
+      if (shotIds.has(link.from_id)) {
+        linkMap[link.from_id] = {
+          linkId: link.id,
+          versionId: link.to_id
+        };
+      }
     });
 
     const dateMap: DateMap = {};
+    // Filter dates to only include those for shots in the current project
     datesResponse.data.forEach(date => {
-      dateMap[date.entity_id] = date.value;
+      // Only include dates for shots in the current project
+      if (shotIds.has(date.entity_id)) {
+        dateMap[date.entity_id] = date.value;
+      }
     });
 
     debug(`Found ${shotsResponse.data.length} shots to process`);
 
     // Sort shots alphabetically for consistent processing order
-    const shots = (shotsResponse.data as Shot[]).sort((a, b) => a.name.localeCompare(b.name));
+    shots.sort((a, b) => a.name.localeCompare(b.name));
 
     // Process each shot
     const proposedChanges: ProposedChange[] = [];

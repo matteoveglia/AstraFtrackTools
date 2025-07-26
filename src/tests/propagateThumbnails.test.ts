@@ -1,6 +1,8 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { Session } from "@ftrack/api";
 import { propagateThumbnails } from "../tools/propagateThumbnails.ts";
+import { ProjectContextService } from "../services/projectContext.ts";
+import { QueryService } from "../services/queries.ts";
 
 // Mock modules
 let mockInquirer: any;
@@ -14,19 +16,40 @@ const mockShots = [
   { id: "shot-2", name: "shot_010" },
 ];
 
-  const mockVersions = [
-    {
-      id: "version-1",
-      version: 1,
-      thumbnail_id: "thumb-1",
-      asset: { name: "main" },
-      date: "2024-01-01T10:00:00Z",
-    },
-  ];
+const mockVersions = [
+  {
+    id: "version-1",
+    version: 1,
+    thumbnail_id: "thumb-1",
+    asset: { name: "main" },
+    date: "2024-01-01T10:00:00Z",
+  },
+];
 
 const mockShotDetails = [
   { thumbnail_id: null }, // No current thumbnail
 ];
+
+// Mock services
+function createMockProjectContextService(isGlobal = false) {
+  return {
+    getContext: () => ({
+      isGlobal,
+      project: isGlobal ? null : { id: "project-1", name: "Test Project" }
+    })
+  } as ProjectContextService;
+}
+
+function createMockQueryService(queryResponses: any[]) {
+  let queryCallCount = 0;
+  return {
+    queryShots: () => {
+      const response = queryResponses[queryCallCount];
+      queryCallCount++;
+      return Promise.resolve({ data: response });
+    }
+  } as QueryService;
+}
 
 // Mock session factory
 function createMockSession(queryResponses: any[], updateMock?: any) {
@@ -58,7 +81,7 @@ Deno.test("propagateThumbnails - should update thumbnail for a specific shot wit
   let updateParams: any[] = [];
   
   const mockSession = createMockSession(
-    [mockShots.slice(0, 1), mockVersions, mockShotDetails],
+    [mockVersions, mockShotDetails], // Only need versions and shot details for session.query
     (...args: any[]) => {
       updateCalled = true;
       updateParams = args;
@@ -66,8 +89,11 @@ Deno.test("propagateThumbnails - should update thumbnail for a specific shot wit
     }
   );
 
+  const mockProjectContext = createMockProjectContextService(false);
+  const mockQueryService = createMockQueryService([mockShots.slice(0, 1)]);
+
   try {
-    await propagateThumbnails(mockSession, "shot-1");
+    await propagateThumbnails(mockSession, mockProjectContext, mockQueryService, "shot-1");
 
     // Verify progress indicator was shown (new format includes ETA and chalk formatting)
     const progressLog = logCalls.find(log => log.includes("[1/1]") && log.includes("Processing"));
@@ -99,15 +125,18 @@ Deno.test("propagateThumbnails - should skip update if shot already has the late
   const mockShotWithThumbnail = [{ thumbnail_id: "thumb-1" }];
 
   const mockSession = createMockSession(
-    [mockShots.slice(0, 1), mockVersions, mockShotWithThumbnail],
+    [mockVersions, mockShotWithThumbnail],
     () => {
       updateCalled = true;
       return Promise.resolve();
     }
   );
 
+  const mockProjectContext = createMockProjectContextService(false);
+  const mockQueryService = createMockQueryService([mockShots.slice(0, 1)]);
+
   try {
-    await propagateThumbnails(mockSession, "shot-1");
+    await propagateThumbnails(mockSession, mockProjectContext, mockQueryService, "shot-1");
 
     // Verify update was not called
     assertEquals(updateCalled, false, "Should not call update when thumbnail already exists");
@@ -130,15 +159,18 @@ Deno.test("propagateThumbnails - should handle shots without versions", async ()
 
   let updateCalled = false;
   const mockSession = createMockSession(
-    [mockShots.slice(0, 1), []], // Empty versions array
+    [[]], // Empty versions array
     () => {
       updateCalled = true;
       return Promise.resolve();
     }
   );
 
+  const mockProjectContext = createMockProjectContextService(false);
+  const mockQueryService = createMockQueryService([mockShots.slice(0, 1)]);
+
   try {
-    await propagateThumbnails(mockSession, "shot-1");
+    await propagateThumbnails(mockSession, mockProjectContext, mockQueryService, "shot-1");
 
     // Verify update was not called
     assertEquals(updateCalled, false, "Should not call update when no versions found");
@@ -163,10 +195,15 @@ Deno.test("propagateThumbnails - should handle errors properly", async () => {
     query: () => Promise.reject(new Error("API Error")),
   } as unknown as Session;
 
+  const mockProjectContext = createMockProjectContextService(false);
+  const mockQueryService = {
+    queryShots: () => Promise.reject(new Error("API Error"))
+  } as QueryService;
+
   try {
     await assertRejects(
       async () => {
-        await propagateThumbnails(mockSession, "shot-1");
+        await propagateThumbnails(mockSession, mockProjectContext, mockQueryService, "shot-1");
       },
       Error,
       "API Error"

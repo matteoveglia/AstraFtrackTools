@@ -4,6 +4,8 @@ import chalk from "chalk";
 import { debug } from "../utils/debug.ts";
 import { createProgressTracker, formatProgress, getETA, completeProgress } from "../utils/progress.ts";
 import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
+import { ProjectContextService } from "../services/projectContext.ts";
+import { QueryService } from "../services/queries.ts";
 
 // Custom progress function for propagate thumbnails with bold formatting
 function updateProgressWithBold(tracker: any, item?: string): void {
@@ -17,7 +19,12 @@ function updateProgressWithBold(tracker: any, item?: string): void {
   console.log(chalk.bold(`[${progress}]${eta} Processing${itemText}`));
 }
 
-export async function propagateThumbnails(session: Session, shotId?: string) {
+export async function propagateThumbnails(
+  session: Session, 
+  projectContextService: ProjectContextService,
+  queryService: QueryService,
+  shotId?: string
+) {
   // If no shotId provided, prompt user for input
   if (!shotId) {
     debug("No shot ID provided, prompting user for input");
@@ -30,15 +37,20 @@ export async function propagateThumbnails(session: Session, shotId?: string) {
   }
 
   try {
-    // Get shots to process
-    const shotsQuery = shotId
-      ? `select id, name from Shot where id is "${shotId}"`
-      : "select id, name from Shot";
-
-    const shotsResponse = await session.query(shotsQuery);
+    // Build project-scoped query for shots
+    const additionalFilters = shotId ? `id is "${shotId}"` : "";
+    
+    debug(`Querying shots with filters: ${additionalFilters}`);
+    const shotsResponse = await queryService.queryShots(additionalFilters);
     const shots = shotsResponse.data;
 
-    debug(`Found ${shots.length} shots to process`);
+    const projectContext = projectContextService.getContext();
+    const contextDisplay = projectContext.isGlobal 
+      ? "all projects" 
+      : `project "${projectContext.project?.name}"`;
+    
+    debug(`Found ${shots.length} shots to process in ${contextDisplay}`);
+    console.log(chalk.blue(`Processing ${shots.length} shots in ${contextDisplay}`));
 
     // Sort shots alphabetically by name (A-Z)
     shots.sort((a: any, b: any) => a.name.localeCompare(b.name));
