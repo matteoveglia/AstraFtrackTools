@@ -3,8 +3,8 @@ import inquirer from "inquirer";
 import { updateLatestVersionsSent } from "./tools/updateLatestVersions.ts";
 import { exportSchema } from "./tools/exportSchema.ts";
 import { inspectVersion } from "./tools/inspectVersion.ts";
-import inspectShot from "./tools/inspectShot.ts";
-import inspectTask from "./tools/inspectTask.ts";
+import { inspectShot } from "./tools/inspectShot.ts";
+import { inspectTask } from "./tools/inspectTask.ts";
 import { propagateThumbnails } from "./tools/propagateThumbnails.ts";
 import { debug } from "./utils/debug.ts";
 import { loadPreferences, savePreferences } from "./utils/preferences.ts";
@@ -305,7 +305,7 @@ async function runTool(
       break;
     case "exportSchema":
       if (subOption) {
-        const result = await exportSchema(session, subOption);
+        const result = await exportSchema(session, projectContextService, subOption);
         if (typeof result === 'object' && result !== null) {
           // Use type assertion to handle the result correctly
           const exportResult = result as { filename: string };
@@ -320,16 +320,16 @@ async function runTool(
       }
       break;
     case "inspectVersion":
-      await inspectVersion(session);
+      await inspectVersion(session, projectContextService, queryService);
       break;
     case "inspectShot":
-      await inspectShot(session);
+      await inspectShot(session, projectContextService, queryService);
       break;
     case "inspectTask":
-      await inspectTask(session);
+      await inspectTask(session, projectContextService, queryService);
       break;
     case "inspectNote":
-      await inspectNote(session);
+      await inspectNote(session, projectContextService, queryService);
       break;
     case "manageLists":
       await manageLists(session, projectContextService, queryService);

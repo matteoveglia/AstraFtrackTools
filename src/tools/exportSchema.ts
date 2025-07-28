@@ -6,6 +6,9 @@ import { createObjectCsvWriter } from "csv-writer";
 import type { Session } from "@ftrack/api";
 import { debug } from "../utils/debug.ts";
 import inquirer from "inquirer";
+import { ProjectContextService } from "../services/projectContext.ts";
+import { QueryService } from "../services/queries.ts";
+import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
 
 export interface SchemaField {
   type: string;
@@ -55,98 +58,120 @@ const ENTITY_TYPES = [
   "User",
 ];
 
-async function generateSchema(session: Session): Promise<Schema> {
+async function generateSchema(
+  session: Session,
+  projectContextService: ProjectContextService
+): Promise<Schema> {
+  debug("Starting schema generation...");
   const schema: Schema = {};
 
-  for (const entityType of ENTITY_TYPES) {
-    debug(`Fetching schema for ${entityType}...`);
+  const projectContext = projectContextService.getContext();
+  const contextDisplay = projectContext.isGlobal 
+    ? "all projects" 
+    : `project "${projectContext.project?.name}"`;
 
-    try {
-      // Get base schema from entity metadata
-      const metadataResponse = await session.query(`
-                select key from CustomAttributeConfiguration 
-                where object_type_id in (select id from ObjectType where name is "${entityType}")
-            `);
+  try {
+    // Get all entity types using session directly (schema queries don't need project scoping)
+    const entityTypesResponse = await withErrorHandling(
+      () => session.query("select id, name from ObjectType"),
+      {
+        operation: 'fetch entity types',
+        entity: 'ObjectType'
+      }
+    );
 
-      // Get custom attribute links
-      const linksResponse = await session.query(`
-                select key, label, id 
-                from CustomAttributeLinkConfiguration 
-                where object_type_id in (select id from ObjectType where name is "${entityType}")
-            `);
+    if (!entityTypesResponse || !entityTypesResponse.data) {
+      throw new Error("Failed to fetch entity types");
+    }
+    
+    console.log(`\nGenerating schema for ${contextDisplay}...`);
+    debug(`Found ${entityTypesResponse.data.length} entity types`);
 
-      // Use schema.ts structure for base fields
-      const baseFields: Record<string, SchemaField> = {
-        id: { type: "string", required: true },
-        name: { type: "string", required: true },
-        // Common fields across most entity types
-        metadata: { type: "array", required: false },
-        custom_attributes: { type: "array", required: false },
-        __entity_type__: { type: "string", required: false },
-        __permissions: { type: "object", required: false },
+    for (const entityType of entityTypesResponse.data) {
+      debug(`Processing entity type: ${entityType.name}`);
+      schema[entityType.name] = {
+        type: entityType.name,
+        baseFields: {},
+        customAttributes: { standard: [], links: [] },
       };
 
-      // Add type-specific fields based on entityType
-      switch (entityType) {
-        case "Shot":
-        case "Task":
-          baseFields.status_id = { type: "string", required: true };
-          baseFields.type_id = { type: "string", required: false };
-          baseFields.parent_id = { type: "string", required: false };
-          break;
-        case "AssetVersion":
-          baseFields.asset_id = { type: "string", required: false };
-          baseFields.version = { type: "number", required: false };
-          baseFields.is_published = { type: "boolean", required: true };
-          break;
-          // Add more cases as needed
+      // Get base fields for this entity type
+      const baseFieldsResponse = await withErrorHandling(
+        () => session.query(`
+          select 
+            name,
+            type,
+            is_required
+          from Attribute 
+          where entity_type="${entityType.name}"
+        `),
+        {
+          operation: 'fetch base fields',
+          entity: 'Attribute',
+          additionalData: { entityType: entityType.name }
+        }
+      );
+
+      // Process base fields
+      if (baseFieldsResponse && baseFieldsResponse.data) {
+        for (const field of baseFieldsResponse.data) {
+          schema[entityType.name].baseFields[field.name] = {
+            type: field.type,
+            required: field.is_required,
+          };
+        }
       }
 
-      // Map custom attributes
-      const standardAttrs = (metadataResponse.data || []).map((attr: any) => ({
-        id: attr.id || `custom_${attr.key}`,
-        key: attr.key,
-        label: attr.key,
-        config: { type: "string" }, // Default to string, update if needed
-        entity_type: entityType,
-      }));
+      // Get custom attributes for this entity type
+      const customAttributesResponse = await withErrorHandling(
+        () => session.query(`
+          select 
+            id,
+            key,
+            label,
+            type,
+            config,
+            entity_type
+          from CustomAttributeConfiguration 
+          where entity_type="${entityType.name}"
+        `),
+        {
+          operation: 'fetch custom attributes',
+          entity: 'CustomAttributeConfiguration',
+          additionalData: { entityType: entityType.name }
+        }
+      );
 
-      const linkAttrs = (linksResponse.data || []).map((link: any) => ({
-        id: link.id,
-        key: link.key,
-        label: link.label || link.key,
-        config: { type: "link" },
-        entity_type: entityType,
-        type: "link",
-      }));
+      // Process custom attributes
+      if (customAttributesResponse && customAttributesResponse.data) {
+        for (const attr of customAttributesResponse.data) {
+          const customAttr = {
+            id: attr.id,
+            key: attr.key,
+            label: attr.label,
+            type: attr.type,
+            config: attr.config,
+            entity_type: entityType.name,
+          };
 
-      schema[entityType] = {
-        type: entityType,
-        baseFields,
-        customAttributes: {
-          standard: standardAttrs,
-          links: linkAttrs,
-        },
-      };
-
-      debug(`Successfully generated schema for ${entityType}`);
-    } catch (error) {
-      console.error(`Error generating schema for ${entityType}:`, error);
-      schema[entityType] = {
-        type: entityType,
-        baseFields: {
-          id: { type: "string", required: true },
-          name: { type: "string", required: true },
-        },
-        customAttributes: {
-          standard: [],
-          links: [],
-        },
-      };
+          if (attr.type === "link") {
+            schema[entityType.name].customAttributes.links.push(customAttr);
+          } else {
+            schema[entityType.name].customAttributes.standard.push(customAttr);
+          }
+        }
+      }
     }
-  }
 
-  return schema;
+    debug("Schema generation completed successfully");
+    return schema;
+  } catch (error) {
+    handleError(error, {
+      operation: 'generate schema',
+      additionalData: { contextDisplay: contextDisplay }
+    });
+    throw error;
+  }
 }
 
 async function exportToCSV(schema: Schema, outputPath: string): Promise<void> {
@@ -329,11 +354,12 @@ function mapTypeToTypeScript(ftrackType: string): string {
 
 export async function exportSchema(
   session: Session,
+  projectContextService: ProjectContextService,
   format: "json" | "yaml" | "csv" | "ts",
 ): Promise<string> {
   try {
     debug(`Starting schema export in ${format} format...`);
-    const schema = await generateSchema(session);
+    const schema = await generateSchema(session, projectContextService);
 
     const outputDir = path.join(process.cwd(), "output");
     await fs.mkdir(outputDir, { recursive: true });
@@ -380,7 +406,7 @@ export async function exportSchema(
           { name: "Generate TypeScript (.ts) file", value: "ts" },
         ].filter((choice) => choice.value !== format), // Remove current format from choices
       }]);
-      return exportSchema(session, newFormat);
+      return exportSchema(session, projectContextService, newFormat);
     }
 
     return outputPath;

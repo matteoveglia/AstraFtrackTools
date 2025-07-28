@@ -1,88 +1,147 @@
-import { Session } from "@ftrack/api";
+import type { Session } from "@ftrack/api";
 import inquirer from "inquirer";
 import { debug } from "../utils/debug.ts";
+import { ProjectContextService } from "../services/projectContext.ts";
+import { QueryService } from "../services/queries.ts";
+import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
 
-export async function inspectVersion(session: Session, versionId?: string) {
-  // If no versionId provided, prompt user for input
-  if (!versionId) {
-    debug("No version ID provided, prompting user for input");
-    const answer = await inquirer.prompt({
-      type: "input",
-      name: "versionId",
-      message: "Enter AssetVersion ID:",
-      validate: (input: string) => {
-        return input.length > 0 || "Please enter a valid ID";
-      },
+export async function inspectVersion(
+  session: Session,
+  projectContextService: ProjectContextService,
+  queryService: QueryService,
+  versionId?: string
+): Promise<void> {
+  const projectContext = projectContextService.getContext();
+  const contextDisplay = projectContext.isGlobal 
+    ? "all projects" 
+    : `project "${projectContext.project?.name}"`;
+
+  try {
+    // Prompt for version ID if not provided
+    if (!versionId) {
+      const { inputVersionId } = await inquirer.prompt([
+        {
+          type: "input",
+          name: "inputVersionId",
+          message: "Enter the Version ID to inspect:",
+          validate: (input) => {
+            if (!input.trim()) {
+              return "Version ID is required";
+            }
+            return true;
+          },
+        },
+      ]);
+      versionId = inputVersionId.trim();
+    }
+
+    console.log(`\n🔍 Inspecting Version: ${versionId} (${contextDisplay})`);
+
+    // Fetch version details using QueryService
+    const versionResponse = await withErrorHandling(
+      () => queryService.queryAssetVersions(`id is "${versionId}"`),
+      {
+        operation: 'fetch version details',
+        entity: 'AssetVersion',
+        additionalData: { versionId, contextDisplay }
+      }
+    );
+
+    if (!versionResponse?.data || versionResponse.data.length === 0) {
+      console.log(`❌ Version with ID "${versionId}" not found`);
+      return;
+    }
+
+    const version = versionResponse.data[0];
+
+    // Display version information
+    console.log("\n📦 Version Details:");
+    console.log(`   ID: ${version.id}`);
+    console.log(`   Asset: ${version.asset?.name || "Unknown asset"}`);
+    console.log(`   Version: ${version.version || "Unknown"}`);
+    console.log(`   Status: ${version.status?.name || "No status"}`);
+    console.log(`   Task: ${version.task?.name || "No task"}`);
+    console.log(`   User: ${version.user?.first_name} ${version.user?.last_name} (${version.user?.username})`);
+    console.log(`   Date: ${version.date ? new Date(version.date).toLocaleString() : "Unknown"}`);
+    console.log(`   Comment: ${version.comment || "No comment"}`);
+
+    // Fetch custom attribute links using direct session query (custom attributes don't need project scoping)
+    const customAttributeLinksResponse = await withErrorHandling(
+      () => session.query(`
+        select 
+          id,
+          value,
+          configuration.key,
+          configuration.label,
+          configuration.type.name
+        from CustomAttributeValue 
+        where entity_id="${versionId}"
+      `),
+      {
+        operation: 'fetch version custom attributes',
+        entity: 'CustomAttributeValue',
+        additionalData: { versionId, contextDisplay }
+      }
+    );
+
+    if (customAttributeLinksResponse?.data && customAttributeLinksResponse.data.length > 0) {
+      console.log("\n🏷️ Custom Attributes:");
+      customAttributeLinksResponse.data.forEach((attr: any) => {
+        console.log(`   • ${attr.configuration?.label || attr.configuration?.key || "Unknown"}: ${attr.value || "No value"}`);
+        console.log(`     Type: ${attr.configuration?.type?.name || "Unknown type"}`);
+        console.log(`     ID: ${attr.id}`);
+        console.log("");
+      });
+    } else {
+      console.log("\n🏷️ No custom attributes found");
+    }
+
+    // Fetch linked notes using direct session query (notes don't need project scoping)
+    const linkedNotesResponse = await withErrorHandling(
+      () => session.query(`
+        select 
+          id,
+          content,
+          user.first_name,
+          user.last_name,
+          user.username,
+          date,
+          category.name
+        from Note 
+        where parent_id="${versionId}"
+        order by date desc
+        limit 10
+      `),
+      {
+        operation: 'fetch version notes',
+        entity: 'Note',
+        additionalData: { versionId, contextDisplay }
+      }
+    );
+
+    if (linkedNotesResponse?.data && linkedNotesResponse.data.length > 0) {
+      console.log("\n📝 Linked Notes (last 10):");
+      linkedNotesResponse.data.forEach((note: any) => {
+        const user = note.user ? `${note.user.first_name} ${note.user.last_name} (${note.user.username})` : "Unknown user";
+        const date = note.date ? new Date(note.date).toLocaleString() : "Unknown date";
+        
+        console.log(`   • ${note.category?.name || "General"} - ${user}`);
+        console.log(`     Date: ${date}`);
+        console.log(`     Content: ${note.content || "No content"}`);
+        console.log(`     ID: ${note.id}`);
+        console.log("");
+      });
+    } else {
+      console.log("\n📝 No linked notes found");
+    }
+
+    debug(`Version inspection completed for ID: ${versionId}`);
+  } catch (error) {
+    handleError(error, {
+      operation: 'inspect version',
+      entity: 'AssetVersion',
+      additionalData: { versionId, contextDisplay }
     });
-    versionId = answer.versionId;
+    throw error;
   }
-
-  debug(`Fetching version details for ID: ${versionId}`);
-
-  // Get basic version info
-  const response = await session.query(`
-        select 
-            id,
-            version,
-            asset.id,
-            asset.name,
-            task.id,
-            task.name,
-            task.parent.id,
-            task.parent.name,
-            task.parent.type.name,
-            project.id,
-            project.name,
-            date,
-            custom_attributes,
-            is_published,
-            asset.parent.id,
-            asset.parent.name,
-            asset.parent.type.name,
-            metadata.key,
-            metadata.value
-        from AssetVersion 
-        where id is "${versionId}"`);
-
-  debug("Version details retrieved");
-
-  // Get any custom attribute links
-  debug("Fetching custom attribute links");
-  const linksQuery = await session.query(`
-        select 
-            id, 
-            configuration.key,
-            configuration.id,
-            from_id, 
-            to_id, 
-            from_entity_type,
-            to_entity_type
-        from CustomAttributeLink 
-        where from_id is "${versionId}" 
-        or to_id is "${versionId}"`);
-
-  debug("Custom attribute links retrieved");
-
-  // Get linked notes
-  debug("Fetching linked notes");
-  const notesQuery = await session.query(`
-    select 
-      id,
-      content,
-      date,
-      author.id,
-      author.first_name,
-      author.last_name
-    from Note
-    where parent_id is "${versionId}"
-  `);
-
-  debug("Linked notes retrieved");
-
-  console.log("\n=== VERSION DETAILS ===\n");
-  console.log(JSON.stringify(response.data[0], null, 2));
-  console.log("\n=== CUSTOM ATTRIBUTE LINKS ===\n");
-  console.log(JSON.stringify(linksQuery.data, null, 2));
-  console.log("\n=== LINKED NOTES ===\n");
-  console.log(JSON.stringify(notesQuery.data, null, 2));
 }
