@@ -6,7 +6,7 @@ import { QueryService } from "../services/queries.ts";
 import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
 
 export async function inspectShot(
-  session: Session,
+  _session: Session,
   projectContextService: ProjectContextService,
   queryService: QueryService,
   shotId?: string
@@ -53,13 +53,19 @@ export async function inspectShot(
     }
 
     const shot = shotResponse.data[0];
+    const shotData = shot as {
+      id: string;
+      name: string;
+      status?: { name?: string };
+      parent?: { name?: string };
+    };
 
     // Display shot information
     console.log("\n🎬 Shot Details:");
-    console.log(`   ID: ${shot.id}`);
-    console.log(`   Name: ${shot.name}`);
-    console.log(`   Status: ${shot.status?.name || "No status"}`);
-    console.log(`   Parent: ${shot.parent?.name || "No parent"}`);
+    console.log(`   ID: ${shotData.id}`);
+    console.log(`   Name: ${shotData.name}`);
+    console.log(`   Status: ${shotData.status?.name || "No status"}`);
+    console.log(`   Parent: ${shotData.parent?.name || "No parent"}`);
 
     // Fetch associated tasks using QueryService
     const tasksResponse = await withErrorHandling(
@@ -73,10 +79,16 @@ export async function inspectShot(
 
     if (tasksResponse?.data && tasksResponse.data.length > 0) {
       console.log("\n📋 Associated Tasks:");
-      tasksResponse.data.forEach((task: any) => {
-        console.log(`   • ${task.name} (${task.type?.name || "Unknown type"})`);
-        console.log(`     Status: ${task.status?.name || "No status"}`);
-        console.log(`     ID: ${task.id}`);
+      tasksResponse.data.forEach((task: unknown) => {
+        const taskData = task as {
+          id: string;
+          name: string;
+          type?: { name?: string };
+          status?: { name?: string };
+        };
+        console.log(`   • ${taskData.name} (${taskData.type?.name || "Unknown type"})`);
+        console.log(`     Status: ${taskData.status?.name || "No status"}`);
+        console.log(`     ID: ${taskData.id}`);
       });
     } else {
       console.log("\n📋 No associated tasks found");
@@ -94,11 +106,17 @@ export async function inspectShot(
 
     if (versionsResponse?.data && versionsResponse.data.length > 0) {
       console.log("\n📦 Latest Versions:");
-      versionsResponse.data.forEach((version: any) => {
-        console.log(`   • ${version.asset?.name || "Unknown asset"} v${version.version || "Unknown"}`);
-        console.log(`     Task: ${version.task?.name || "Unknown task"}`);
-        console.log(`     Parent: ${version.asset?.parent?.name || "Unknown parent"}`);
-        console.log(`     ID: ${version.id}`);
+      versionsResponse.data.forEach((version: unknown) => {
+        const versionData = version as {
+          id: string;
+          version?: number;
+          asset?: { name?: string; parent?: { name?: string } };
+          task?: { name?: string };
+        };
+        console.log(`   • ${versionData.asset?.name || "Unknown asset"} v${versionData.version || "Unknown"}`);
+        console.log(`     Task: ${versionData.task?.name || "Unknown task"}`);
+        console.log(`     Parent: ${versionData.asset?.parent?.name || "Unknown parent"}`);
+        console.log(`     ID: ${versionData.id}`);
         console.log("");
       });
     } else {

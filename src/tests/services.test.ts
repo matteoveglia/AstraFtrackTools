@@ -7,11 +7,11 @@ import { QueryService } from "../services/queries.ts";
 // Mock session for testing
 const createMockSession = () => {
   return {
-    query: async (expression: string) => {
+    query: (expression: string) => {
       if (expression.includes("error")) {
-        throw new Error("Mock query error");
+        return Promise.reject(new Error("Mock query error"));
       }
-      return { data: [{ id: "test-id", name: "test-name" }] };
+      return Promise.resolve({ data: [{ id: "test-id", name: "test-name" }] });
     },
   } as unknown as Session;
 };
@@ -22,7 +22,7 @@ Deno.test("SessionService - should execute queries successfully", async () => {
   
   const result = await sessionService.query("select id, name from Project");
   assertEquals(result.data.length, 1);
-  assertEquals(result.data[0].id, "test-id");
+  assertEquals((result.data[0] as { id: string; name: string }).id, "test-id");
 });
 
 Deno.test("SessionService - should handle query errors", async () => {
@@ -118,5 +118,5 @@ Deno.test("QueryService - should execute project-scoped queries", async () => {
   
   const result = await queryService.queryShots();
   assertEquals(result.data.length, 1);
-  assertEquals(result.data[0].id, "test-id");
+  assertEquals((result.data[0] as { id: string; name: string }).id, "test-id");
 });

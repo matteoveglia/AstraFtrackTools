@@ -4,12 +4,6 @@ import { propagateThumbnails } from "../tools/propagateThumbnails.ts";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
 
-// Mock modules
-let mockInquirer: any;
-let mockDebug: any;
-let mockConsoleLog: any;
-let mockConsoleError: any;
-
 // Test setup
 const mockShots = [
   { id: "shot-1", name: "shot_020" }, // Note: reversed order to test A-Z sorting
@@ -40,7 +34,7 @@ function createMockProjectContextService(isGlobal = false) {
   } as ProjectContextService;
 }
 
-function createMockQueryService(queryResponses: any[]) {
+function createMockQueryService(queryResponses: unknown[]) {
   let queryCallCount = 0;
   return {
     queryShots: () => {
@@ -52,7 +46,7 @@ function createMockQueryService(queryResponses: any[]) {
 }
 
 // Mock session factory
-function createMockSession(queryResponses: any[], updateMock?: any) {
+function createMockSession(queryResponses: unknown[], updateMock?: (...args: unknown[]) => Promise<void>) {
   let queryCallCount = 0;
   return {
     query: () => {
@@ -64,25 +58,20 @@ function createMockSession(queryResponses: any[], updateMock?: any) {
   } as unknown as Session;
 }
 
-// Mock inquirer
-function mockInquirerPrompt(responses: Record<string, any>) {
-  return () => Promise.resolve(responses);
-}
-
 Deno.test("propagateThumbnails - should update thumbnail for a specific shot with progress indicator", async () => {
   // Setup mocks
   const originalConsoleLog = console.log;
   const logCalls: string[] = [];
-  console.log = (...args: any[]) => {
+  console.log = (...args: unknown[]) => {
     logCalls.push(args.join(' '));
   };
 
   let updateCalled = false;
-  let updateParams: any[] = [];
+  let updateParams: unknown[] = [];
   
   const mockSession = createMockSession(
     [mockVersions, mockShotDetails], // Only need versions and shot details for session.query
-    (...args: any[]) => {
+    (...args: unknown[]) => {
       updateCalled = true;
       updateParams = args;
       return Promise.resolve();
@@ -107,7 +96,7 @@ Deno.test("propagateThumbnails - should update thumbnail for a specific shot wit
     assertEquals(updateCalled, true, "Should call update");
     assertEquals(updateParams[0], "Shot", "Should update Shot entity");
     assertEquals(updateParams[1], ["shot-1"], "Should update correct shot ID");
-    assertEquals(updateParams[2].thumbnail_id, "thumb-1", "Should set correct thumbnail ID");
+    assertEquals((updateParams[2] as { thumbnail_id: string }).thumbnail_id, "thumb-1", "Should set correct thumbnail ID");
 
   } finally {
     console.log = originalConsoleLog;
@@ -117,7 +106,7 @@ Deno.test("propagateThumbnails - should update thumbnail for a specific shot wit
 Deno.test("propagateThumbnails - should skip update if shot already has the latest thumbnail", async () => {
   const originalConsoleLog = console.log;
   const logCalls: string[] = [];
-  console.log = (...args: any[]) => {
+  console.log = (...args: unknown[]) => {
     logCalls.push(args.join(' '));
   };
 
@@ -153,7 +142,7 @@ Deno.test("propagateThumbnails - should skip update if shot already has the late
 Deno.test("propagateThumbnails - should handle shots without versions", async () => {
   const originalConsoleLog = console.log;
   const logCalls: string[] = [];
-  console.log = (...args: any[]) => {
+  console.log = (...args: unknown[]) => {
     logCalls.push(args.join(' '));
   };
 
@@ -187,7 +176,7 @@ Deno.test("propagateThumbnails - should handle shots without versions", async ()
 Deno.test("propagateThumbnails - should handle errors properly", async () => {
   const originalConsoleError = console.error;
   const errorCalls: string[] = [];
-  console.error = (...args: any[]) => {
+  console.error = (...args: unknown[]) => {
     errorCalls.push(args.join(' '));
   };
 

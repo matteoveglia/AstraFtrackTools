@@ -7,14 +7,14 @@ import { debug } from './debug.ts';
 export interface FtrackError extends Error {
   errorCode?: string;
   statusCode?: number;
-  details?: any;
+  details?: unknown;
 }
 
 export interface ErrorContext {
   operation: string;
   entity?: string;
   entityId?: string;
-  additionalData?: Record<string, any>;
+  additionalData?: Record<string, unknown>;
 }
 
 /**
@@ -31,7 +31,7 @@ export function handleError(
   let errorMessage = 'Unknown error occurred';
   let errorCode: string | undefined;
   let statusCode: number | undefined;
-  let details: any;
+  let details: unknown;
 
   if (error instanceof Error) {
     errorMessage = error.message;
@@ -192,4 +192,4 @@ export async function retryWithBackoff<T>(
   }
   
   throw lastError!;
-} 
+}

@@ -2,13 +2,13 @@ import { Session } from "@ftrack/api";
 import inquirer from "inquirer";
 import chalk from "chalk";
 import { debug } from "../utils/debug.ts";
-import { createProgressTracker, formatProgress, getETA, completeProgress } from "../utils/progress.ts";
+import { createProgressTracker, formatProgress, getETA, completeProgress, type ProgressTracker } from "../utils/progress.ts";
 import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
 
 // Custom progress function for propagate thumbnails with bold formatting
-function updateProgressWithBold(tracker: any, item?: string): void {
+function updateProgressWithBold(tracker: ProgressTracker, item?: string): void {
   tracker.current++;
   tracker.lastUpdate = Date.now();
   
@@ -66,11 +66,16 @@ export async function propagateThumbnails(
     console.log(chalk.blue(`Processing ${shots.length} shots in ${contextDisplay}`));
 
     // Sort shots alphabetically by name (A-Z)
-    shots.sort((a: any, b: any) => a.name.localeCompare(b.name));
+    shots.sort((a: unknown, b: unknown) => {
+      const shotA = a as { name: string };
+      const shotB = b as { name: string };
+      return shotA.name.localeCompare(shotB.name);
+    });
 
     const progressTracker = createProgressTracker(shots.length);
 
-    for (const shot of shots) {
+    for (const shotData of shots) {
+      const shot = shotData as { id: string; name: string };
       updateProgressWithBold(progressTracker, shot.name);
       debug(`Processing shot: ${shot.name} (${shot.id})`);
 
@@ -88,14 +93,17 @@ export async function propagateThumbnails(
 
       if (versionsResponse?.data && versionsResponse.data.length > 0) {
         // Sort by date and version to get the latest
-        const sortedVersions = versionsResponse.data.sort((a: any, b: any) => {
-          const dateA = new Date(a.date || 0).getTime();
-          const dateB = new Date(b.date || 0).getTime();
+        const sortedVersions = versionsResponse.data.sort((a: unknown, b: unknown) => {
+          const versionA = a as { date?: string; version?: number };
+          const versionB = b as { date?: string; version?: number };
+          const dateA = new Date(versionA.date || 0).getTime();
+          const dateB = new Date(versionB.date || 0).getTime();
           if (dateA !== dateB) return dateB - dateA; // Latest date first
-          return (b.version || 0) - (a.version || 0); // Highest version first
+          return (versionB.version || 0) - (versionA.version || 0); // Highest version first
         });
 
-        const latestVersion = sortedVersions[0];
+        const latestVersionData = sortedVersions[0];
+        const latestVersion = latestVersionData as { id: string; version: number; thumbnail_id: string; date?: string };
         
         if (latestVersion.thumbnail_id) {
           debug(

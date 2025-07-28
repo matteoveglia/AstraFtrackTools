@@ -41,7 +41,7 @@ const mockVersionsData = [{
 }];
 
 // Mock session factory
-function createMockSession(queryResponses: any[]) {
+function createMockSession(queryResponses: unknown[]) {
   let queryCallCount = 0;
   return {
     query: () => {
@@ -69,7 +69,7 @@ const mockQueryService = {
 Deno.test("inspectShot - should process shot details with provided shotId", async () => {
   const originalConsoleLog = console.log;
   let logCalled = false;
-  console.log = (...args: any[]) => {
+  console.log = (..._args: unknown[]) => {
     logCalled = true;
   };
 
@@ -89,7 +89,7 @@ Deno.test("inspectShot - should process shot details with provided shotId", asyn
 Deno.test("inspectShot - should handle errors properly", async () => {
   const originalConsoleError = console.error;
   const errorCalls: string[] = [];
-  console.error = (...args: any[]) => {
+  console.error = (...args: unknown[]) => {
     errorCalls.push(args.join(' '));
   };
 

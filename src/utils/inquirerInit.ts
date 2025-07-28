@@ -1,6 +1,10 @@
 
 // Import Deno types (Deno is a global available at runtime)
-declare const Deno: any;
+declare const Deno: {
+  stdin?: {
+    write(data: Uint8Array): Promise<number>;
+  };
+};
 
 /**
  * Fixes an issue with inquirer in Deno where the prompt doesn't show
@@ -34,9 +38,9 @@ export function initInquirerPrompt(): void {
         }
         // Mark as applied regardless, since we only want to try once
         fixApplied = true;
-      } catch (error) {
+      } catch (_error) {
         // Ignore any errors, this is just a workaround
       }
     }, 100);
   }
-} 
+}

@@ -53,17 +53,27 @@ export async function inspectVersion(
     }
 
     const version = versionResponse.data[0];
+    const versionData = version as {
+      id: string;
+      asset?: { name?: string };
+      version?: number;
+      status?: { name?: string };
+      task?: { name?: string };
+      user?: { first_name?: string; last_name?: string; username?: string };
+      date?: string;
+      comment?: string;
+    };
 
     // Display version information
     console.log("\n📦 Version Details:");
-    console.log(`   ID: ${version.id}`);
-    console.log(`   Asset: ${version.asset?.name || "Unknown asset"}`);
-    console.log(`   Version: ${version.version || "Unknown"}`);
-    console.log(`   Status: ${version.status?.name || "No status"}`);
-    console.log(`   Task: ${version.task?.name || "No task"}`);
-    console.log(`   User: ${version.user?.first_name} ${version.user?.last_name} (${version.user?.username})`);
-    console.log(`   Date: ${version.date ? new Date(version.date).toLocaleString() : "Unknown"}`);
-    console.log(`   Comment: ${version.comment || "No comment"}`);
+    console.log(`   ID: ${versionData.id}`);
+    console.log(`   Asset: ${versionData.asset?.name || "Unknown asset"}`);
+    console.log(`   Version: ${versionData.version || "Unknown"}`);
+    console.log(`   Status: ${versionData.status?.name || "No status"}`);
+    console.log(`   Task: ${versionData.task?.name || "No task"}`);
+    console.log(`   User: ${versionData.user?.first_name} ${versionData.user?.last_name} (${versionData.user?.username})`);
+    console.log(`   Date: ${versionData.date ? new Date(versionData.date).toLocaleString() : "Unknown"}`);
+    console.log(`   Comment: ${versionData.comment || "No comment"}`);
 
     // Fetch custom attribute links using direct session query (custom attributes don't need project scoping)
     const customAttributeLinksResponse = await withErrorHandling(
@@ -86,10 +96,19 @@ export async function inspectVersion(
 
     if (customAttributeLinksResponse?.data && customAttributeLinksResponse.data.length > 0) {
       console.log("\n🏷️ Custom Attributes:");
-      customAttributeLinksResponse.data.forEach((attr: any) => {
-        console.log(`   • ${attr.configuration?.label || attr.configuration?.key || "Unknown"}: ${attr.value || "No value"}`);
-        console.log(`     Type: ${attr.configuration?.type?.name || "Unknown type"}`);
-        console.log(`     ID: ${attr.id}`);
+      customAttributeLinksResponse.data.forEach((attr: unknown) => {
+        const attrData = attr as { 
+          id: string; 
+          value?: string; 
+          configuration?: { 
+            key?: string; 
+            label?: string; 
+            type?: { name?: string } 
+          } 
+        };
+        console.log(`   • ${attrData.configuration?.label || attrData.configuration?.key || "Unknown"}: ${attrData.value || "No value"}`);
+        console.log(`     Type: ${attrData.configuration?.type?.name || "Unknown type"}`);
+        console.log(`     ID: ${attrData.id}`);
         console.log("");
       });
     } else {
@@ -121,14 +140,21 @@ export async function inspectVersion(
 
     if (linkedNotesResponse?.data && linkedNotesResponse.data.length > 0) {
       console.log("\n📝 Linked Notes (last 10):");
-      linkedNotesResponse.data.forEach((note: any) => {
-        const user = note.user ? `${note.user.first_name} ${note.user.last_name} (${note.user.username})` : "Unknown user";
-        const date = note.date ? new Date(note.date).toLocaleString() : "Unknown date";
+      linkedNotesResponse.data.forEach((note: unknown) => {
+        const noteData = note as {
+          id: string;
+          content?: string;
+          user?: { first_name?: string; last_name?: string; username?: string };
+          date?: string;
+          category?: { name?: string };
+        };
+        const user = noteData.user ? `${noteData.user.first_name} ${noteData.user.last_name} (${noteData.user.username})` : "Unknown user";
+        const date = noteData.date ? new Date(noteData.date).toLocaleString() : "Unknown date";
         
-        console.log(`   • ${note.category?.name || "General"} - ${user}`);
+        console.log(`   • ${noteData.category?.name || "General"} - ${user}`);
         console.log(`     Date: ${date}`);
-        console.log(`     Content: ${note.content || "No content"}`);
-        console.log(`     ID: ${note.id}`);
+        console.log(`     Content: ${noteData.content || "No content"}`);
+        console.log(`     ID: ${noteData.id}`);
         console.log("");
       });
     } else {

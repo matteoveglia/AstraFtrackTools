@@ -17,9 +17,10 @@ import { ProjectContextService } from "./services/projectContext.ts";
 import { QueryService } from "./services/queries.ts";
 
 // Import Deno types (Deno is a global available at runtime)
-declare const Deno: any;
-
-const machineHostname = Deno.hostname();
+declare const Deno: {
+  hostname(): string;
+  exit(code?: number): never;
+};
 
 // Global services
 let sessionService: SessionService;
@@ -251,7 +252,7 @@ const tools: Tool[] = [
 ];
 
 // Main menu questions - will be updated with project context
-let menuQuestion = {
+const menuQuestion = {
   type: "list",
   name: "tool",
   message: "Select a tool to run:",
@@ -337,12 +338,13 @@ async function runTool(
     case "propagateThumbnails":
       await propagateThumbnails(session, projectContextService, queryService);
       break;
-    case "set-credentials":
+    case "set-credentials": {
       const selectedTool = tools.find((t) => t.value === tool);
       if (selectedTool?.action) {
         await selectedTool.action();
       }
       break;
+    }
     default:
       console.log(`Unknown tool: ${tool}`);
   }

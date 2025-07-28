@@ -10,7 +10,7 @@ export class SessionService {
   /**
    * Execute a query with error handling
    */
-  async query(expression: string): Promise<any> {
+  async query(expression: string): Promise<{ data: unknown[] }> {
     try {
       debug(`Executing query: ${expression}`);
       const response = await this.session.query(expression);

@@ -1,8 +1,7 @@
-import { assertEquals, assertExists } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import { Session } from "@ftrack/api";
 import { 
   fetchProjects, 
-  selectProject, 
   displayProjectContext,
   type ProjectContext 
 } from "../utils/projectSelection.ts";
@@ -10,17 +9,17 @@ import {
 // Mock session for testing
 const createMockSession = () => {
   return {
-    query: async (expression: string) => {
+    query: (expression: string) => {
       // Mock response for projects query
       if (expression.includes("select id, name, full_name from Project")) {
-        return {
+        return Promise.resolve({
           data: [
             { id: "project-1", full_name: "Test Project 1", name: "TP1" },
             { id: "project-2", full_name: "Test Project 2", name: "TP2" },
           ]
-        };
+        });
       }
-      return { data: [] };
+      return Promise.resolve({ data: [] });
     },
   } as unknown as Session;
 };

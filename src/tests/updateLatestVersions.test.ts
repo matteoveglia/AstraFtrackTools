@@ -34,11 +34,11 @@ function mockDebug(message: string) {
 
 function resetMocks() {
   debugCalls = [];
-  (debugModule as any).debug = mockDebug;
+  (debugModule as unknown as { debug: typeof mockDebug }).debug = mockDebug;
 }
 
 function restoreMocks() {
-  (debugModule as any).debug = originalDebug;
+  (debugModule as unknown as { debug: typeof originalDebug }).debug = originalDebug;
 }
 
 Deno.test("updateLatestVersionsSent should be defined", () => {
@@ -83,7 +83,7 @@ Deno.test("updateLatestVersionsSent should process shots and their versions", as
   const mockQueryService = createMockQueryService() as unknown as QueryService;
 
   // Mock readline to return "no"
-   (globalThis as any).readline = {
+   (globalThis as unknown as { readline: { createInterface: () => { question: (prompt: string) => Promise<string>; close: () => void } } }).readline = {
      createInterface: () => ({
        question: (_prompt: string) => Promise.resolve("no"),
        close: () => {},
@@ -151,7 +151,7 @@ Deno.test("updateLatestVersionsSent should skip shots with no delivered versions
   const mockQueryService = createMockQueryService() as unknown as QueryService;
 
   // Mock readline to return "no"
-  (globalThis as any).readline = {
+  (globalThis as unknown as { readline: { createInterface: () => { question: (prompt: string) => Promise<string>; close: () => void } } }).readline = {
     createInterface: () => ({
       question: (_prompt: string) => Promise.resolve("no"),
       close: () => {},

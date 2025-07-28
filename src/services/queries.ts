@@ -14,7 +14,7 @@ export class QueryService {
   /**
    * Build and execute a project-scoped query
    */
-  async executeProjectScopedQuery(baseQuery: string): Promise<any> {
+  async executeProjectScopedQuery(baseQuery: string): Promise<{ data: unknown[] }> {
     const scopedQuery = this.projectContext.buildProjectScopedQuery(baseQuery);
     debug(`Executing project-scoped query: ${scopedQuery}`);
     return await this.sessionService.query(scopedQuery);
@@ -23,7 +23,7 @@ export class QueryService {
   /**
    * Query shots with project scoping
    */
-  async queryShots(additionalFilters: string = ""): Promise<any> {
+  async queryShots(additionalFilters: string = ""): Promise<{ data: unknown[] }> {
     let baseQuery = 'select id, name, parent.name, status.name from Shot';
     
     if (additionalFilters) {
@@ -36,7 +36,7 @@ export class QueryService {
   /**
    * Query asset versions with project scoping
    */
-  async queryAssetVersions(additionalFilters: string = ""): Promise<any> {
+  async queryAssetVersions(additionalFilters: string = ""): Promise<{ data: unknown[] }> {
     let baseQuery = 'select id, version, asset.name, asset.parent.name, task.name from AssetVersion';
     
     if (additionalFilters) {
@@ -49,7 +49,7 @@ export class QueryService {
   /**
    * Query tasks with project scoping
    */
-  async queryTasks(additionalFilters: string = ""): Promise<any> {
+  async queryTasks(additionalFilters: string = ""): Promise<{ data: unknown[] }> {
     let baseQuery = 'select id, name, type.name, status.name, parent.name from Task';
     
     if (additionalFilters) {
@@ -62,7 +62,7 @@ export class QueryService {
   /**
    * Query projects (always global)
    */
-  async queryProjects(additionalFilters: string = ""): Promise<any> {
+  async queryProjects(additionalFilters: string = ""): Promise<{ data: unknown[] }> {
     let baseQuery = 'select id, name, full_name, status.name from Project';
     
     if (additionalFilters) {

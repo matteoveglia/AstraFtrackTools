@@ -8,7 +8,7 @@ import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
 export async function inspectNote(
   session: Session,
   projectContextService: ProjectContextService,
-  queryService: QueryService,
+  _queryService: QueryService,
   noteId?: string
 ): Promise<void> {
   const projectContext = projectContextService.getContext();
@@ -97,8 +97,9 @@ export async function inspectNote(
 
     if (componentsResponse?.data && componentsResponse.data.length > 0) {
       console.log("\n📎 Attachments:");
-      componentsResponse.data.forEach((component: any) => {
-        console.log(`   • ${component.name} (${component.file_type || "unknown type"}, ${component.size ? `${component.size} bytes` : "unknown size"})`);
+      componentsResponse.data.forEach((component: unknown) => {
+        const comp = component as { name: string; file_type?: string; size?: number };
+        console.log(`   • ${comp.name} (${comp.file_type || "unknown type"}, ${comp.size ? `${comp.size} bytes` : "unknown size"})`);
       });
     } else {
       console.log("\n📎 No attachments found");
@@ -123,8 +124,9 @@ export async function inspectNote(
 
     if (locationsResponse?.data && locationsResponse.data.length > 0) {
       console.log("\n📍 Component Locations:");
-      locationsResponse.data.forEach((location: any) => {
-        console.log(`   • ${location.component?.name}: ${location.location?.name} - ${location.resource_identifier}`);
+      locationsResponse.data.forEach((location: unknown) => {
+        const loc = location as { component?: { name: string }; location?: { name: string }; resource_identifier: string };
+        console.log(`   • ${loc.component?.name}: ${loc.location?.name} - ${loc.resource_identifier}`);
       });
     }
 
@@ -146,8 +148,9 @@ export async function inspectNote(
 
     if (metadataResponse?.data && metadataResponse.data.length > 0) {
       console.log("\n🏷️  Metadata:");
-      metadataResponse.data.forEach((meta: any) => {
-        console.log(`   ${meta.key}: ${meta.value}`);
+      metadataResponse.data.forEach((meta: unknown) => {
+        const metadata = meta as { key: string; value: string };
+        console.log(`   ${metadata.key}: ${metadata.value}`);
       });
     } else {
       console.log("\n🏷️  No metadata found");

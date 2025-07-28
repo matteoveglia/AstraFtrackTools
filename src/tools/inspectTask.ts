@@ -53,14 +53,21 @@ export async function inspectTask(
     }
 
     const task = taskResponse.data[0];
+    const taskData = task as {
+      id: string;
+      name: string;
+      type?: { name?: string };
+      status?: { name?: string };
+      parent?: { name?: string };
+    };
 
     // Display task information
     console.log("\n📋 Task Details:");
-    console.log(`   ID: ${task.id}`);
-    console.log(`   Name: ${task.name}`);
-    console.log(`   Type: ${task.type?.name || "Unknown type"}`);
-    console.log(`   Status: ${task.status?.name || "No status"}`);
-    console.log(`   Parent: ${task.parent?.name || "No parent"}`);
+    console.log(`   ID: ${taskData.id}`);
+    console.log(`   Name: ${taskData.name}`);
+    console.log(`   Type: ${taskData.type?.name || "Unknown type"}`);
+    console.log(`   Status: ${taskData.status?.name || "No status"}`);
+    console.log(`   Parent: ${taskData.parent?.name || "No parent"}`);
 
     // Fetch time logs using direct session query (time logs don't need project scoping)
     const timeLogsResponse = await withErrorHandling(
@@ -87,15 +94,22 @@ export async function inspectTask(
 
     if (timeLogsResponse?.data && timeLogsResponse.data.length > 0) {
       console.log("\n⏰ Recent Time Logs (last 10):");
-      timeLogsResponse.data.forEach((log: any) => {
-        const duration = log.duration ? `${(log.duration / 3600).toFixed(2)}h` : "Unknown duration";
-        const start = log.start ? new Date(log.start).toLocaleString() : "Unknown start";
-        const user = log.user ? `${log.user.first_name} ${log.user.last_name} (${log.user.username})` : "Unknown user";
+      timeLogsResponse.data.forEach((log: unknown) => {
+        const logData = log as {
+          id: string;
+          duration?: number;
+          start?: string;
+          comment?: string;
+          user?: { first_name?: string; last_name?: string; username?: string };
+        };
+        const duration = logData.duration ? `${(logData.duration / 3600).toFixed(2)}h` : "Unknown duration";
+        const start = logData.start ? new Date(logData.start).toLocaleString() : "Unknown start";
+        const user = logData.user ? `${logData.user.first_name} ${logData.user.last_name} (${logData.user.username})` : "Unknown user";
         
         console.log(`   • ${duration} - ${user}`);
         console.log(`     Start: ${start}`);
-        console.log(`     Comment: ${log.comment || "No comment"}`);
-        console.log(`     ID: ${log.id}`);
+        console.log(`     Comment: ${logData.comment || "No comment"}`);
+        console.log(`     ID: ${logData.id}`);
         console.log("");
       });
     } else {
@@ -114,11 +128,17 @@ export async function inspectTask(
 
     if (versionsResponse?.data && versionsResponse.data.length > 0) {
       console.log("\n📦 Associated Versions:");
-      versionsResponse.data.forEach((version: any) => {
-        console.log(`   • ${version.asset?.name || "Unknown asset"} v${version.version || "Unknown"}`);
-        console.log(`     Task: ${version.task?.name || "Unknown task"}`);
-        console.log(`     Parent: ${version.asset?.parent?.name || "Unknown parent"}`);
-        console.log(`     ID: ${version.id}`);
+      versionsResponse.data.forEach((version: unknown) => {
+        const versionData = version as {
+          id: string;
+          version?: number;
+          asset?: { name?: string; parent?: { name?: string } };
+          task?: { name?: string };
+        };
+        console.log(`   • ${versionData.asset?.name || "Unknown asset"} v${versionData.version || "Unknown"}`);
+        console.log(`     Task: ${versionData.task?.name || "Unknown task"}`);
+        console.log(`     Parent: ${versionData.asset?.parent?.name || "Unknown parent"}`);
+        console.log(`     ID: ${versionData.id}`);
         console.log("");
       });
     } else {
