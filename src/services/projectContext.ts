@@ -84,10 +84,26 @@ export class ProjectContextService {
     }
 
     // For schemas with project attributes, add the project filter
+    const projectFilter = `project.id is "${this.context.project!.id}"`;
+    
     if (baseQuery.toLowerCase().includes(' where ')) {
-      return baseQuery.replace(/ where /i, ` where project.id is "${this.context.project!.id}" and `);
+      // If there's already a WHERE clause, add our filter with AND
+      return baseQuery.replace(/ where /i, ` where ${projectFilter} and `);
     } else {
-      return `${baseQuery} where project.id is "${this.context.project!.id}"`;
+      // No WHERE clause exists, we need to insert it before ORDER BY, LIMIT, OFFSET, etc.
+      // Find the position to insert WHERE clause
+      const clausePattern = /\s+(order\s+by|limit|offset|group\s+by|having)\s+/i;
+      const match = baseQuery.match(clausePattern);
+      
+      if (match && match.index !== undefined) {
+        // Insert WHERE clause before the found clause
+        const beforeClause = baseQuery.substring(0, match.index);
+        const afterClause = baseQuery.substring(match.index);
+        return `${beforeClause} where ${projectFilter}${afterClause}`;
+      } else {
+        // No special clauses found, append WHERE at the end
+        return `${baseQuery} where ${projectFilter}`;
+      }
     }
   }
 }

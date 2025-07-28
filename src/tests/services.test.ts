@@ -74,6 +74,38 @@ Deno.test("ProjectContextService - should build global queries when in global mo
   assertEquals(query, "select id, name from Shot");
 });
 
+Deno.test("ProjectContextService - should handle ORDER BY clauses correctly", () => {
+  const projectContext = {
+    project: { id: "project-1", name: "Test Project", full_name: "Test Project Full" },
+    isGlobal: false
+  };
+  const contextService = new ProjectContextService(projectContext);
+  
+  // Test ORDER BY clause
+  const queryWithOrderBy = contextService.buildProjectScopedQuery(
+    "select id, name from List order by name"
+  );
+  assertEquals(queryWithOrderBy, 'select id, name from List where project.id is "project-1" order by name');
+  
+  // Test multiple ORDER BY fields
+  const queryWithMultipleOrderBy = contextService.buildProjectScopedQuery(
+    "select id, name, category.name from List order by category.name, name"
+  );
+  assertEquals(queryWithMultipleOrderBy, 'select id, name, category.name from List where project.id is "project-1" order by category.name, name');
+  
+  // Test LIMIT clause
+  const queryWithLimit = contextService.buildProjectScopedQuery(
+    "select id, name from Shot limit 10"
+  );
+  assertEquals(queryWithLimit, 'select id, name from Shot where project.id is "project-1" limit 10');
+  
+  // Test ORDER BY with LIMIT
+  const queryWithOrderByAndLimit = contextService.buildProjectScopedQuery(
+    "select id, name from Shot order by name limit 10"
+  );
+  assertEquals(queryWithOrderByAndLimit, 'select id, name from Shot where project.id is "project-1" order by name limit 10');
+});
+
 Deno.test("QueryService - should execute project-scoped queries", async () => {
   const mockSession = createMockSession();
   const sessionService = new SessionService(mockSession);
