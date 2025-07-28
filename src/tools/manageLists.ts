@@ -26,7 +26,6 @@ import type {
 } from '../schemas/schema.ts';
 import { debug } from '../utils/debug.ts';
 import type { ProjectContextService } from '../services/projectContext.ts';
-import type { QueryService } from '../services/queries.ts';
 
 // Constants for pagination
 const LISTS_PER_PAGE = 20;
@@ -44,8 +43,7 @@ interface PaginatedListDisplay {
 
 export async function manageLists(
   session: Session,
-  projectContextService: ProjectContextService,
-  queryService: QueryService
+  projectContextService: ProjectContextService
 ): Promise<void> {
   try {
     debug('Starting manageLists process');
@@ -71,7 +69,7 @@ export async function manageLists(
 
     switch (mode) {
       case 'add_shots':
-        await handleAddShots(session, projectContextService, queryService);
+        await handleAddShots(session, projectContextService);
         break;
       case 'create_list':
         await handleCreateList(session, projectContextService);
@@ -160,36 +158,54 @@ async function selectCategory(listsByCategory: Record<string, List[]>): Promise<
 }
 
 /**
+ * Interface for list selection choices
+ */
+interface ListSelectionChoice {
+  id: string | null;
+  name: string | null;
+  action: 'select' | 'prev' | 'next' | 'back' | 'cancel';
+}
+
+/**
+ * Interface for list selection result
+ */
+interface ListSelectionResult {
+  listId: string | null;
+  listName: string | null;
+  action: 'select' | 'prev' | 'next' | 'back' | 'cancel';
+}
+
+/**
  * Displays lists within a category with pagination
  */
 async function selectListFromCategory(
   categoryName: string,
   lists: List[],
   page: number = 1
-): Promise<{ listId: string | null; listName: string | null; action: 'select' | 'next' | 'prev' | 'back' | 'cancel' }> {
+): Promise<ListSelectionResult> {
   const totalPages = Math.ceil(lists.length / LISTS_PER_PAGE);
   const startIndex = (page - 1) * LISTS_PER_PAGE;
   const endIndex = startIndex + LISTS_PER_PAGE;
   const pageItems = lists.slice(startIndex, endIndex);
 
-  const choices = pageItems.map(list => {
+  const choices: { name: string; value: ListSelectionChoice }[] = pageItems.map(list => {
     const displayName = `${list.name} (${list.project?.name || 'No Project'})`;
     return {
       name: displayName,
-      value: { id: list.id, name: list.name, action: 'select' }
+      value: { id: list.id, name: list.name || null, action: 'select' as const }
     };
   });
 
   // Add navigation options
   if (page > 1) {
-    choices.push({ name: '⬅️  Previous page', value: { id: null, name: null, action: 'prev' } });
+    choices.push({ name: '⬅️  Previous page', value: { id: null, name: null, action: 'prev' as const } });
   }
   if (page < totalPages) {
-    choices.push({ name: '➡️  Next page', value: { id: null, name: null, action: 'next' } });
+    choices.push({ name: '➡️  Next page', value: { id: null, name: null, action: 'next' as const } });
   }
   
-  choices.push({ name: '⬅️  Back to categories', value: { id: null, name: null, action: 'back' } });
-  choices.push({ name: '❌ Cancel', value: { id: null, name: null, action: 'cancel' } });
+  choices.push({ name: '⬅️  Back to categories', value: { id: null, name: null, action: 'back' as const } });
+  choices.push({ name: '❌ Cancel', value: { id: null, name: null, action: 'cancel' as const } });
 
   const pageInfo = totalPages > 1 ? ` (Page ${page}/${totalPages})` : '';
 
@@ -213,8 +229,7 @@ async function selectListFromCategory(
  */
 async function handleAddShots(
   session: Session,
-  projectContextService: ProjectContextService,
-  queryService: QueryService
+  projectContextService: ProjectContextService
 ): Promise<void> {
   let selectedListId: string | null = null;
   let selectedListName: string | null = null;
@@ -386,7 +401,7 @@ async function handleCreateList(
       return;
     }
 
-    const projectChoices = projectsResponse.data.map((project: any) => ({
+    const projectChoices = (projectsResponse.data as { id: string; name: string; full_name: string }[]).map((project) => ({
       name: `${project.name} (${project.full_name})`,
       value: project.id
     }));
@@ -532,7 +547,7 @@ async function handleDeleteList(
   console.log(chalk.red('\n   This will permanently delete the list and all its associations!'));
 
   // Double confirmation
-  const { confirmName } = await inquirer.prompt({
+  await inquirer.prompt({
     type: 'input',
     name: 'confirmName',
     message: `Type the list name "${selectedListName}" to confirm deletion:`,
@@ -705,16 +720,27 @@ async function addShotsToList(
   }
 
   // Confirm with user
-  const { confirm } = await inquirer.prompt({
-    type: 'confirm',
-    name: 'confirm',
+  const { action } = await inquirer.prompt({
+    type: 'list',
+    name: 'action',
     message: `Add ${shotsToAdd.length} shots to list "${listName}"?`,
-    default: true
+    choices: [
+      { name: 'Yes - Add these shots', value: 'yes' },
+      { name: 'No - Cancel operation', value: 'no' },
+      { name: 'Change/Revise - Modify shot selection', value: 'change' }
+    ],
+    default: 'yes'
   });
 
-  if (!confirm) {
+  if (action === 'no') {
     console.log(chalk.yellow('\nOperation cancelled.'));
     return;
+  }
+
+  if (action === 'change') {
+    console.log(chalk.blue('\nRestarting shot input...'));
+    // Recursively call the function to restart the process
+    return addShotsToList(session, projectContextService, listId, listName);
   }
 
   // Create list objects to link shots to the list

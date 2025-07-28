@@ -332,7 +332,7 @@ async function runTool(
       await inspectNote(session, projectContextService, queryService);
       break;
     case "manageLists":
-      await manageLists(session, projectContextService, queryService);
+      await manageLists(session, projectContextService);
       break;
     case "propagateThumbnails":
       await propagateThumbnails(session, projectContextService, queryService);
