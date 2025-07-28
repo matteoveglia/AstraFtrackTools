@@ -8,7 +8,7 @@ export const MOCK_SCHEMA: Record<string, EntitySchema> = {
       automation_id: { type: "string", required: true },
       automation: { type: "object", required: false },
     },
-    sample: null,
+    sample: undefined,
     customAttributes: { standard: [], links: [] },
   },
   Asset: {

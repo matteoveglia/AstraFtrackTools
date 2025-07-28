@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { createObjectCsvWriter } from "csv-writer";
@@ -7,7 +8,6 @@ import type { Session } from "@ftrack/api";
 import { debug } from "../utils/debug.ts";
 import inquirer from "inquirer";
 import { ProjectContextService } from "../services/projectContext.ts";
-import { QueryService } from "../services/queries.ts";
 import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
 
 export interface SchemaField {
@@ -37,13 +37,14 @@ export interface EntitySchema {
     standard: CustomAttribute[];
     links: CustomAttribute[];
   };
+  sample?: SampleData;
 }
 
 type Schema = Record<string, EntitySchema>;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const ENTITY_TYPES = [
+const _ENTITY_TYPES = [
   "Action",
   "ActionLog",
   "ApiKey",

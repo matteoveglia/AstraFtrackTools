@@ -1,6 +1,8 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { Session } from "@ftrack/api";
-import inspectShot from "../tools/inspectShot.ts";
+import { inspectShot } from "../tools/inspectShot.ts";
+import { ProjectContextService } from "../services/projectContext.ts";
+import { QueryService } from "../services/queries.ts";
 
 // Mock data setup
 const mockShotData = {
@@ -50,6 +52,20 @@ function createMockSession(queryResponses: any[]) {
   } as unknown as Session;
 }
 
+// Mock services
+const mockProjectContextService = {
+  getContext: () => ({
+    isGlobal: true,
+    project: null
+  })
+} as unknown as ProjectContextService;
+
+const mockQueryService = {
+  queryShots: () => Promise.resolve({ data: [mockShotData] }),
+  queryTasks: () => Promise.resolve({ data: mockTasksData }),
+  queryAssetVersions: () => Promise.resolve({ data: mockVersionsData })
+} as unknown as QueryService;
+
 Deno.test("inspectShot - should process shot details with provided shotId", async () => {
   const originalConsoleLog = console.log;
   let logCalled = false;
@@ -60,7 +76,7 @@ Deno.test("inspectShot - should process shot details with provided shotId", asyn
   const mockSession = createMockSession([mockShotData, mockTasksData, mockVersionsData]);
 
   try {
-    await inspectShot(mockSession, "shot-1");
+    await inspectShot(mockSession, mockProjectContextService, mockQueryService, "shot-1");
 
     // Verify that console.log was called (indicating the function ran successfully)
     assertEquals(logCalled, true, "Should have logged output");
@@ -84,7 +100,7 @@ Deno.test("inspectShot - should handle errors properly", async () => {
   try {
     await assertRejects(
       async () => {
-        await inspectShot(mockSession, "shot-1");
+        await inspectShot(mockSession, mockProjectContextService, mockQueryService, "shot-1");
       },
       Error,
       "API Error"
