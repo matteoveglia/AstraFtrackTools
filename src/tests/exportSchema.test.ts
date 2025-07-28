@@ -18,13 +18,37 @@ const mockProjectContextService = {
   })
 } as unknown as ProjectContextService;
 
-// Mock session
+// Mock session with proper query responses
 const mockSession = {
   apiUser: "test",
   apiKey: "test",
   serverUrl: "test",
   apiEndpoint: "test",
-  query: () => Promise.resolve({ data: [] })
+  query: (expression: string) => {
+    if (expression.includes("ObjectType")) {
+      return Promise.resolve({
+        data: [
+          { id: "shot-id", name: "Shot" },
+          { id: "task-id", name: "Task" },
+          { id: "project-id", name: "Project" }
+        ]
+      });
+    } else if (expression.includes("CustomAttributeConfiguration")) {
+      return Promise.resolve({
+        data: [
+          {
+            id: "attr-1",
+            key: "test_attribute",
+            label: "Test Attribute",
+            type: "text",
+            config: { type: "text" },
+            entity_type: "Shot"
+          }
+        ]
+      });
+    }
+    return Promise.resolve({ data: [] });
+  }
 } as unknown as Session;
 
 async function setupTest() {
@@ -47,7 +71,7 @@ Deno.test("exportSchema - should export schema in JSON format", async () => {
   await setupTest();
   
   try {
-    const outputPath = await exportSchema(mockSession, mockProjectContextService, "json");
+    const outputPath = await exportSchema(mockSession, mockProjectContextService, "json", false);
     const content = await fs.readFile(outputPath, "utf8");
     const schema = JSON.parse(content);
 
@@ -62,7 +86,7 @@ Deno.test("exportSchema - should export schema in YAML format", async () => {
   await setupTest();
   
   try {
-    const outputPath = await exportSchema(mockSession, mockProjectContextService, "yaml");
+    const outputPath = await exportSchema(mockSession, mockProjectContextService, "yaml", false);
     const content = await fs.readFile(outputPath, "utf8");
     const schema = yaml.load(content) as Record<string, unknown>;
 
@@ -77,7 +101,7 @@ Deno.test("exportSchema - should export schema in CSV format", async () => {
   await setupTest();
   
   try {
-    const outputPath = await exportSchema(mockSession, mockProjectContextService, "csv");
+    const outputPath = await exportSchema(mockSession, mockProjectContextService, "csv", false);
     const content = await fs.readFile(outputPath, "utf8");
     const lines = content.split("\n");
 
@@ -93,7 +117,7 @@ Deno.test("exportSchema - should export schema in TypeScript format", async () =
   await setupTest();
   
   try {
-    const outputPath = await exportSchema(mockSession, mockProjectContextService, "ts");
+    const outputPath = await exportSchema(mockSession, mockProjectContextService, "ts", false);
     const content = await fs.readFile(outputPath, "utf8");
 
     assertEquals(content.includes("interface"), true, "Should contain interface definitions");
@@ -108,6 +132,9 @@ Deno.test("exportSchema - should throw error with invalid session credentials", 
     apiKey: "",
     serverUrl: "",
     apiEndpoint: "",
+    query: () => {
+      throw new Error("Invalid API credentials");
+    }
   };
   
   // Temporarily clear environment variables
@@ -122,10 +149,10 @@ Deno.test("exportSchema - should throw error with invalid session credentials", 
   try {
     await assertRejects(
       async () => {
-        await exportSchema(invalidSession as Session, mockProjectContextService, "json");
+        await exportSchema(invalidSession as Session, mockProjectContextService, "json", false);
       },
       Error,
-      "Missing required environment variables"
+      "Invalid API credentials"
     );
   } finally {
     // Restore environment variables
@@ -139,7 +166,7 @@ Deno.test("exportSchema - should create output directory if it does not exist", 
   await fs.rm(outputDir, { recursive: true, force: true });
   
   try {
-    const outputPath = await exportSchema(mockSession, mockProjectContextService, "json");
+    const outputPath = await exportSchema(mockSession, mockProjectContextService, "json", false);
 
     const dirExists = await fs.stat(path.dirname(outputPath))
       .then(() => true)

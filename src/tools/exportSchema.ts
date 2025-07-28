@@ -97,30 +97,60 @@ async function generateSchema(
       };
 
       // Get base fields for this entity type
-      const baseFieldsResponse = await withErrorHandling(
-        () => session.query(`
-          select 
-            name,
-            type,
-            is_required
-          from Attribute 
-          where entity_type="${entityType.name}"
-        `),
-        {
-          operation: 'fetch base fields',
-          entity: 'Attribute',
-          additionalData: { entityType: entityType.name }
-        }
-      );
-
-      // Process base fields
-      if (baseFieldsResponse && baseFieldsResponse.data) {
-        for (const field of baseFieldsResponse.data) {
-          schema[entityType.name].baseFields[field.name] = {
-            type: field.type,
-            required: field.is_required,
-          };
-        }
+      try {
+        // Add common base fields that exist for most entity types
+        const commonBaseFields = {
+          'id': { type: 'string', required: true },
+          'name': { type: 'string', required: false },
+          'created_date': { type: 'datetime', required: false },
+          'updated_date': { type: 'datetime', required: false }
+        };
+        
+        // Add entity-specific base fields
+        const entitySpecificFields: Record<string, Record<string, SchemaField>> = {
+          'Project': {
+            'full_name': { type: 'string', required: false },
+            'status': { type: 'string', required: false },
+            'start_date': { type: 'date', required: false },
+            'end_date': { type: 'date', required: false }
+          },
+          'Shot': {
+            'status': { type: 'string', required: false },
+            'priority': { type: 'string', required: false },
+            'description': { type: 'text', required: false }
+          },
+          'Task': {
+            'status': { type: 'string', required: false },
+            'priority': { type: 'string', required: false },
+            'bid': { type: 'number', required: false },
+            'type': { type: 'string', required: false }
+          },
+          'AssetVersion': {
+            'version': { type: 'number', required: false },
+            'comment': { type: 'text', required: false },
+            'is_latest_version': { type: 'boolean', required: false }
+          },
+          'User': {
+            'username': { type: 'string', required: false },
+            'email': { type: 'string', required: false },
+            'first_name': { type: 'string', required: false },
+            'last_name': { type: 'string', required: false }
+          }
+        };
+        
+        // Merge common and entity-specific fields
+        schema[entityType.name].baseFields = {
+          ...commonBaseFields,
+          ...(entitySpecificFields[entityType.name] || {})
+        };
+        
+      } catch (schemaError) {
+        debug(`Could not set base fields for ${entityType.name}: ${schemaError}`);
+        // Set minimal base fields as fallback
+        schema[entityType.name].baseFields = {
+          'id': { type: 'string', required: true },
+          'name': { type: 'string', required: false }
+        };
       }
 
       // Get custom attributes for this entity type
@@ -357,6 +387,7 @@ export async function exportSchema(
   session: Session,
   projectContextService: ProjectContextService,
   format: "json" | "yaml" | "csv" | "ts",
+  interactive: boolean = true,
 ): Promise<string> {
   try {
     debug(`Starting schema export in ${format} format...`);
@@ -384,30 +415,32 @@ export async function exportSchema(
       console.log(`cat ${outputPath} | jq`);
     }
 
-    // Add post-export menu
-    const { nextAction } = await inquirer.prompt([{
-      type: "list",
-      name: "nextAction",
-      message: "What would you like to do next?",
-      choices: [
-        { name: "Export in another format", value: "export_again" },
-        { name: "Return to main menu", value: "main_menu" },
-      ],
-    }]);
-
-    if (nextAction === "export_again") {
-      const { newFormat } = await inquirer.prompt([{
+    // Add post-export menu only in interactive mode
+    if (interactive) {
+      const { nextAction } = await inquirer.prompt([{
         type: "list",
-        name: "newFormat",
-        message: "Select export format:",
+        name: "nextAction",
+        message: "What would you like to do next?",
         choices: [
-          { name: "Export to JSON", value: "json" },
-          { name: "Export to YAML", value: "yaml" },
-          { name: "Export to CSV", value: "csv" },
-          { name: "Generate TypeScript (.ts) file", value: "ts" },
-        ].filter((choice) => choice.value !== format), // Remove current format from choices
+          { name: "Export in another format", value: "export_again" },
+          { name: "Return to main menu", value: "main_menu" },
+        ],
       }]);
-      return exportSchema(session, projectContextService, newFormat);
+
+      if (nextAction === "export_again") {
+        const { newFormat } = await inquirer.prompt([{
+          type: "list",
+          name: "newFormat",
+          message: "Select export format:",
+          choices: [
+            { name: "Export to JSON", value: "json" },
+            { name: "Export to YAML", value: "yaml" },
+            { name: "Export to CSV", value: "csv" },
+            { name: "Generate TypeScript (.ts) file", value: "ts" },
+          ].filter((choice) => choice.value !== format), // Remove current format from choices
+        }]);
+        return exportSchema(session, projectContextService, newFormat, interactive);
+      }
     }
 
     return outputPath;
