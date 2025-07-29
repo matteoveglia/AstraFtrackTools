@@ -1,5 +1,6 @@
 import { Session } from "@ftrack/api";
-import inquirer from "inquirer";
+
+ import inquirer from "inquirer";
 import { updateLatestVersionsSent } from "./tools/updateLatestVersions.ts";
 import { exportSchema } from "./tools/exportSchema.ts";
 import { inspectVersion } from "./tools/inspectVersion.ts";
@@ -15,7 +16,7 @@ import { selectProject, displayProjectContext, type ProjectContext } from "./uti
 import { SessionService } from "./services/session.ts";
 import { ProjectContextService } from "./services/projectContext.ts";
 import { QueryService } from "./services/queries.ts";
-import { debugPrompt } from "./utils/inputDebug.ts";
+
 
 // Import Deno types (Deno is a global available at runtime)
 declare const Deno: {
@@ -254,28 +255,31 @@ const tools: Tool[] = [
     name: "🔧 Test First Keypress Issue",
     value: "test-keypress",
     description: "Phase 7 debugging: Test first keypress issue",
-    action: async () => {
-      const { testFirstKeypressIssue } = await import("./utils/inputDebug.ts");
-      await testFirstKeypressIssue();
+    action: () => {
+      
+      console.log("This test is no longer available. It was part of the Inquirer.js debugging process.");
+        return Promise.resolve();
     },
   },
   {
     name: "🔧 Test Input Workarounds",
     value: "test-workarounds",
     description: "Phase 7.3: Test different workarounds for input issue",
-    action: async () => {
-      const { testWorkarounds } = await import("./utils/inputDebug.ts");
-      await testWorkarounds();
+    action: () => {
+      
+      console.log("This test is no longer available. It was part of the Inquirer.js debugging process.");
+        return Promise.resolve();
     },
   },
   {
     name: "🔧 Analyze Input Events",
     value: "analyze-events",
     description: "Phase 7.3: Detailed input event analysis",
-    action: async () => {
-      const { analyzeInputEvents } = await import("./utils/inputDebug.ts");
-      await analyzeInputEvents();
-    },
+    action: () => {
+      
+      console.log("This test is no longer available. It was part of the Inquirer.js debugging process.");
+        return Promise.resolve();
+    }
   },
 ];
 
@@ -402,8 +406,7 @@ async function main() {
         ? updateMenuWithContext(currentProjectContext)
         : menuQuestion;
       
-      // Phase 7.2: Use debugPrompt for main menu to track input state
-      const { tool } = await debugPrompt(currentMenu, "Main menu selection");
+      const { tool } = await inquirer.prompt(currentMenu);
 
       if (tool === "exit") {
         running = false;
@@ -421,21 +424,19 @@ async function main() {
       const selectedTool = tools.find((t) => t.value === tool);
 
       if (selectedTool?.subMenu) {
-        // Phase 7.2: Use debugPrompt for submenu to track input state after main menu
-        const { subOption } = await debugPrompt({
-          type: "list",
-          name: "subOption",
-          message: `Select ${selectedTool.name} option:`,
-          choices: selectedTool.subMenu,
-        }, "Submenu selection after main menu");
+        const { subOption } = await inquirer.prompt({
+           type: "list",
+           name: "subOption",
+           message: `Select ${selectedTool.name} option:`,
+           choices: selectedTool.subMenu,
+         });
 
         await runTool(session, tool, subOption);
       } else {
         await runTool(session, tool);
       }
 
-      // Phase 7.2: Use debugPrompt for continue question to track input state after tool completion
-      const { cont } = await debugPrompt(continueQuestion, "Continue question after tool completion");
+      const { cont } = await inquirer.prompt(continueQuestion);
 
       running = cont;
     }
