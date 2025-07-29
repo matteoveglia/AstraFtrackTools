@@ -15,6 +15,7 @@ import { selectProject, displayProjectContext, type ProjectContext } from "./uti
 import { SessionService } from "./services/session.ts";
 import { ProjectContextService } from "./services/projectContext.ts";
 import { QueryService } from "./services/queries.ts";
+import { debugPrompt } from "./utils/inputDebug.ts";
 
 // Import Deno types (Deno is a global available at runtime)
 declare const Deno: {
@@ -249,6 +250,33 @@ const tools: Tool[] = [
     description: "Configure Ftrack API credentials",
     action: setAndTestCredentials,
   },
+  {
+    name: "🔧 Test First Keypress Issue",
+    value: "test-keypress",
+    description: "Phase 7 debugging: Test first keypress issue",
+    action: async () => {
+      const { testFirstKeypressIssue } = await import("./utils/inputDebug.ts");
+      await testFirstKeypressIssue();
+    },
+  },
+  {
+    name: "🔧 Test Input Workarounds",
+    value: "test-workarounds",
+    description: "Phase 7.3: Test different workarounds for input issue",
+    action: async () => {
+      const { testWorkarounds } = await import("./utils/inputDebug.ts");
+      await testWorkarounds();
+    },
+  },
+  {
+    name: "🔧 Analyze Input Events",
+    value: "analyze-events",
+    description: "Phase 7.3: Detailed input event analysis",
+    action: async () => {
+      const { analyzeInputEvents } = await import("./utils/inputDebug.ts");
+      await analyzeInputEvents();
+    },
+  },
 ];
 
 // Main menu questions - will be updated with project context
@@ -338,7 +366,10 @@ async function runTool(
     case "propagateThumbnails":
       await propagateThumbnails(session, projectContextService, queryService);
       break;
-    case "set-credentials": {
+    case "set-credentials":
+    case "test-keypress":
+    case "test-workarounds":
+    case "analyze-events": {
       const selectedTool = tools.find((t) => t.value === tool);
       if (selectedTool?.action) {
         await selectedTool.action();
@@ -356,7 +387,7 @@ async function main() {
   console.log("Astra Ftrack Tools");
   console.log("==================");
 
-  // Apply inquirer fix for Deno environment
+  // Apply inquirer fix for Deno environment (now no-op for Phase 7 investigation)
   initInquirerPrompt();
 
   try {
@@ -371,7 +402,8 @@ async function main() {
         ? updateMenuWithContext(currentProjectContext)
         : menuQuestion;
       
-      const { tool } = await inquirer.prompt(currentMenu);
+      // Phase 7.2: Use debugPrompt for main menu to track input state
+      const { tool } = await debugPrompt(currentMenu, "Main menu selection");
 
       if (tool === "exit") {
         running = false;
@@ -389,19 +421,21 @@ async function main() {
       const selectedTool = tools.find((t) => t.value === tool);
 
       if (selectedTool?.subMenu) {
-        const { subOption } = await inquirer.prompt({
+        // Phase 7.2: Use debugPrompt for submenu to track input state after main menu
+        const { subOption } = await debugPrompt({
           type: "list",
           name: "subOption",
           message: `Select ${selectedTool.name} option:`,
           choices: selectedTool.subMenu,
-        });
+        }, "Submenu selection after main menu");
 
         await runTool(session, tool, subOption);
       } else {
         await runTool(session, tool);
       }
 
-      const { cont } = await inquirer.prompt(continueQuestion);
+      // Phase 7.2: Use debugPrompt for continue question to track input state after tool completion
+      const { cont } = await debugPrompt(continueQuestion, "Continue question after tool completion");
 
       running = cont;
     }
