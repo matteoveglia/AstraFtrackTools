@@ -104,6 +104,8 @@ export async function updateLatestVersionsSent(
     const forceUpdate = mode === 'force';
     debug(`Update mode: ${forceUpdate ? 'Force update' : 'New changes only'}`);
 
+    console.log("Loading configurations... ⏳");
+
     // Get both custom attribute configurations
     const configResponse = await session.query(`
       select id, key
@@ -120,6 +122,7 @@ export async function updateLatestVersionsSent(
     `);
 
     if (!configResponse.data || !dateConfigResponse.data) {
+      console.log("\r❌ Failed to load configurations");
       throw new Error('Could not find necessary configurations');
     }
 
@@ -127,6 +130,9 @@ export async function updateLatestVersionsSent(
     const dateConfigId = dateConfigResponse.data[0].id;
     debug(`Found configuration ID: ${configId}`);
     debug(`Found date configuration ID: ${dateConfigId}`);
+
+    console.log("\r✅ Configurations loaded");
+    console.log("Loading project data... ⏳");
 
     // Use QueryService to get project-scoped shots
     const shotsResponse = await queryService.queryShots();
@@ -159,6 +165,9 @@ export async function updateLatestVersionsSent(
       session.query(linksQuery),
       session.query(datesQuery)
     ]);
+
+    console.log("\r✅ Project data loaded");
+    console.log("Processing shots... ⏳\n");
 
     // Create lookup maps
     const linkMap: LinkMap = {};
@@ -399,6 +408,8 @@ export async function updateLatestVersionsSent(
     }
 
     if (action === 'all') {
+      console.log("Applying updates... ⏳");
+      
       // Perform all updates at once
       for await (const change of proposedChanges) {
         try {
@@ -474,6 +485,8 @@ Date: ${chalk.red(formatDate(change.currentDate))} → ${chalk.green(formatDate(
         }
 
         if (confirm === 'yes') {
+          console.log(`Updating ${change.shotName}... ⏳`);
+          
           try {
             debug(`Processing individual update for ${change.shotName}`);
             debug(`Shot ID: ${change.shotId}`);
@@ -519,8 +532,9 @@ Date: ${chalk.red(formatDate(change.currentDate))} → ${chalk.green(formatDate(
               );
             }
 
-            console.log(`Updated ${change.shotName}: ${change.currentVersion} → ${change.newVersion} (Date: ${change.dateSent || 'Not set'})`);
+            console.log(`\r✅ Updated ${change.shotName}: ${change.currentVersion} → ${change.newVersion} (Date: ${change.dateSent || 'Not set'})`);
           } catch (error) {
+            console.log(`\r❌ Failed to update ${change.shotName}`);
             console.error(`Failed to update shot ${change.shotName}:`, error);
             const continueAfterError = await Confirm.prompt({
               message: 'Continue with remaining updates?',

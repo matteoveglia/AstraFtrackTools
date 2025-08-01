@@ -19,6 +19,8 @@ export interface ProjectContext {
 export async function fetchProjects(session: Session): Promise<Project[]> {
   debug("Fetching available projects");
   
+  console.log("Loading projects... ⏳");
+  
   try {
     const response = await session.query(
       'select id, name, full_name from Project'
@@ -27,9 +29,13 @@ export async function fetchProjects(session: Session): Promise<Project[]> {
     const projects = response.data as Project[];
     debug(`Found ${projects.length} projects`);
     
+    // Clear the loading message
+    console.log(`\r✅ Loaded ${projects.length} projects`);
+    
     return projects.sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
     debug(`Error fetching projects: ${error}`);
+    console.log("\r❌ Failed to load projects");
     throw new Error(`Failed to fetch projects: ${error instanceof Error ? error.message : error}`);
   }
 }
@@ -48,7 +54,7 @@ export async function selectProject(session: Session): Promise<ProjectContext> {
   }
   
   const options = [
-    { name: "🌍 all projects, site-wide", value: "global" },
+    { name: "🌐 all projects, site-wide", value: "global" },
     ...projects.map(project => ({
       name: `📁 ${project.name} (${project.full_name})`,
       value: project.id
@@ -79,7 +85,7 @@ export async function selectProject(session: Session): Promise<ProjectContext> {
  */
 export function displayProjectContext(context: ProjectContext): string {
   if (context.isGlobal) {
-    return "🌍 all projects, site-wide";
+    return "🌐 all projects, site-wide";
   }
   return `📁 ${context.project?.name || "Unknown Project"}`;
 }

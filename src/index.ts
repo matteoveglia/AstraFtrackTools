@@ -186,15 +186,10 @@ async function setAndTestCredentials(): Promise<boolean> {
   }
 }
 
-// Available tools
-const tools: Tool[] = [
+// Available tools organized by scope
+const globalTools: Tool[] = [
   {
-    name: "🌐 Update Latest Versions Sent",
-    value: "updateVersions",
-    description: "Updates all shots with their latest delivered version",
-  },
-  {
-    name: "🌐 Export Schema",
+    name: "🌍 Export Schema",
     value: "exportSchema",
     description:
       "Exports schema information for major entity types including custom attributes",
@@ -206,24 +201,38 @@ const tools: Tool[] = [
     ],
   },
   {
-    name: "🌐 Inspect Version",
+    name: "🌍 Inspect Version",
     value: "inspectVersion",
     description: "Inspect a specific version's relationships",
   },
   {
-    name: "🌐 Inspect Shot",
+    name: "🌍 Inspect Shot",
     value: "inspectShot",
     description: "Inspect a specific shot's details and relationships",
   },
   {
-    name: "🌐 Inspect Task",
+    name: "🌍 Inspect Task",
     value: "inspectTask",
     description: "Inspect a specific task's details and time logs",
   },
   {
-    name: "🌐 Inspect Note",
+    name: "🌍 Inspect Note",
     value: "inspectNote",
     description: "Inspect a specific note and its attachments",
+  },
+  {
+    name: "🌍 Set Ftrack Credentials",
+    value: "set-credentials",
+    description: "Configure Ftrack API credentials",
+    action: setAndTestCredentials,
+  },
+];
+
+const projectTools: Tool[] = [
+  {
+    name: "📁 Update Latest Versions Sent",
+    value: "updateVersions",
+    description: "Updates all shots with their latest delivered version",
   },
   {
     name: "📁 Manage Lists",
@@ -236,13 +245,6 @@ const tools: Tool[] = [
     description:
       "Update shots with thumbnails from their latest asset versions",
   },
-  {
-    name: "🌐 Set Ftrack Credentials",
-    value: "set-credentials",
-    description: "Configure Ftrack API credentials",
-    action: setAndTestCredentials,
-  },
-
 ];
 
 // Function to update menu with project context - no longer needed with Cliffy
@@ -295,7 +297,8 @@ async function runTool(
       await propagateThumbnails(session, projectContextService, queryService);
       break;
     case "set-credentials": {
-      const selectedTool = tools.find((t) => t.value === tool);
+      const allTools = [...globalTools, ...projectTools];
+      const selectedTool = allTools.find((t) => t.value === tool);
       if (selectedTool?.action) {
         await selectedTool.action();
       }
@@ -305,6 +308,12 @@ async function runTool(
       console.log(`Unknown tool: ${tool}`);
   }
   debug(`Completed tool: ${tool}`);
+}
+
+// Helper function to find a tool by value
+function findTool(toolValue: string): Tool | undefined {
+  const allTools = [...globalTools, ...projectTools];
+  return allTools.find(t => t.value === toolValue);
 }
 
 // Main function
@@ -322,18 +331,37 @@ async function main() {
     let running = true;
 
     while (running) {
+      // Build menu options with proper grouping
+      const menuOptions = [];
+      
+      // Add global tools section
+      if (globalTools.length > 0) {
+        menuOptions.push({ name: "─── All Projects - tools ignore project selection ───", value: "separator-global", disabled: true });
+        menuOptions.push(...globalTools.map((tool) => ({
+          name: `${tool.name} - ${tool.description}`,
+          value: tool.value,
+        })));
+      }
+      
+      // Add project tools section
+      if (projectTools.length > 0) {
+        menuOptions.push({ name: "─── Project Based ───", value: "separator-project", disabled: true });
+        menuOptions.push(...projectTools.map((tool) => ({
+          name: `${tool.name} - ${tool.description}`,
+          value: tool.value,
+        })));
+      }
+      
+      // Add utility options
+      menuOptions.push({ name: "─── Utilities ───", value: "separator-utils", disabled: true });
+      menuOptions.push({ name: "Change Project", value: "change-project" });
+      menuOptions.push({ name: "Exit", value: "exit" });
+
       const tool = await Select.prompt({
         message: currentProjectContext 
           ? `[${displayProjectContext(currentProjectContext)}] Select a tool to run:`
           : "Select a tool to run:",
-        options: [
-          ...tools.map((tool) => ({
-            name: `${tool.name} - ${tool.description}`,
-            value: tool.value,
-          })),
-          { name: "Change Project", value: "change-project" },
-          { name: "Exit", value: "exit" },
-        ],
+        options: menuOptions,
       });
 
       if (tool === "exit") {
@@ -342,14 +370,17 @@ async function main() {
       }
 
       if (tool === "change-project") {
-        // Re-run project selection
+        // Clear previous project context display
+        console.log("\n📁 Project Selection");
+        console.log("===================");
         currentProjectContext = await selectProject(session);
         // Update the project context service with the new context
         projectContextService.setContext(currentProjectContext);
+        console.log(`\n✅ Ready! Operating in: ${displayProjectContext(currentProjectContext)}\n`);
         continue;
       }
 
-      const selectedTool = tools.find((t) => t.value === tool);
+      const selectedTool = findTool(tool);
 
       if (selectedTool?.subMenu) {
         const subOption = await Select.prompt({
