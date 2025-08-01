@@ -1,5 +1,5 @@
 import type { Session } from "@ftrack/api";
-import inquirer from "inquirer";
+import { Input } from "@cliffy/prompt";
 import { debug } from "../utils/debug.ts";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
@@ -19,20 +19,16 @@ export async function inspectShot(
   try {
     // Prompt for shot ID if not provided
     if (!shotId) {
-      const { inputShotId } = await inquirer.prompt([
-        {
-          type: "input",
-          name: "inputShotId",
-          message: "Enter the Shot ID to inspect:",
-          validate: (input) => {
-            if (!input.trim()) {
-              return "Shot ID is required";
-            }
-            return true;
-          },
+      shotId = await Input.prompt({
+        message: "Enter the Shot ID to inspect:",
+        validate: (input: string) => {
+          if (!input.trim()) {
+            return "Shot ID is required";
+          }
+          return true;
         },
-      ]);
-      shotId = inputShotId.trim();
+      });
+      shotId = shotId.trim();
     }
 
     console.log(`\n🔍 Inspecting Shot: ${shotId} (${contextDisplay})`);

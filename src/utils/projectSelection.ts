@@ -1,5 +1,5 @@
 import { Session } from "@ftrack/api";
-import inquirer from "inquirer";
+import { Select } from '@cliffy/prompt';
 import { debug } from "./debug.ts";
 
 export interface Project {
@@ -47,29 +47,25 @@ export async function selectProject(session: Session): Promise<ProjectContext> {
     return { project: null, isGlobal: true };
   }
   
-  const choices = [
+  const options = [
     { name: "🌍 all projects, site-wide", value: "global" },
-    new inquirer.Separator("--- Projects ---"),
     ...projects.map(project => ({
       name: `📁 ${project.name} (${project.full_name})`,
       value: project.id
     }))
   ];
   
-  const answer = await inquirer.prompt({
-    type: "list",
-    name: "selection",
+  const selection = await Select.prompt({
     message: "Select project scope:",
-    choices,
-    pageSize: 15
+    options
   });
   
-  if (answer.selection === "global") {
+  if (selection === "global") {
     debug("User selected global mode");
     return { project: null, isGlobal: true };
   }
   
-  const selectedProject = projects.find(p => p.id === answer.selection);
+  const selectedProject = projects.find(p => p.id === selection);
   if (!selectedProject) {
     throw new Error("Invalid project selection");
   }

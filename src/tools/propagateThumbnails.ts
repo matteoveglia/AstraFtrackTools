@@ -1,5 +1,5 @@
 import { Session } from "@ftrack/api";
-import inquirer from "inquirer";
+import { Input } from "@cliffy/prompt";
 import chalk from "chalk";
 import { debug } from "../utils/debug.ts";
 import { createProgressTracker, formatProgress, getETA, completeProgress, type ProgressTracker } from "../utils/progress.ts";
@@ -34,12 +34,9 @@ export async function propagateThumbnails(
     // Prompt for shot ID if not provided
     if (!shotId) {
       debug("No shot ID provided, prompting user for input");
-      const answer = await inquirer.prompt({
-        type: "input",
-        name: "shotId",
+      shotId = await Input.prompt({
         message: "Enter Shot ID (leave empty to process all shots):",
       });
-      shotId = answer.shotId;
     }
 
     // Build project-scoped query for shots
