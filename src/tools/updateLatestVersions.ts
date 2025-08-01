@@ -21,7 +21,7 @@
  */
 
 import { Session } from '@ftrack/api';
-import inquirer from 'inquirer';
+import { Select, Confirm } from '@cliffy/prompt';
 import chalk from 'chalk';
 import type { 
   Shot, 
@@ -92,16 +92,14 @@ export async function updateLatestVersionsSent(
     
     console.log(chalk.blue(`\nUpdating latest versions for: ${contextInfo}\n`));
 
-    const { mode } = await inquirer.prompt([{
-      type: 'list',
-      name: 'mode',
+    const mode = await Select.prompt({
       message: 'Select update mode:',
-      choices: [
+      options: [
         { name: 'Check for new changes only', value: 'new' },
         { name: 'Force update all shots', value: 'force' }
       ],
       default: 'new'
-    }]);
+    });
 
     const forceUpdate = mode === 'force';
     debug(`Update mode: ${forceUpdate ? 'Force update' : 'New changes only'}`);
@@ -342,15 +340,13 @@ export async function updateLatestVersionsSent(
 
     // If in force mode, offer option to switch to only differences
     if (forceUpdate && proposedChanges.length > 0) {
-      const { switchMode } = await inquirer.prompt([{
-        type: 'list',
-        name: 'switchMode',
+      const switchMode = await Select.prompt({
         message: 'You are in force update mode. How would you like to proceed?',
-        choices: [
+        options: [
           { name: 'Continue with all updates', value: 'continue' },
           { name: 'Filter to changes only', value: 'differences' }
         ]
-      }]);
+      });
 
       if (switchMode === 'differences') {
         // Filter to keep only changes where version or date is different
@@ -387,17 +383,15 @@ export async function updateLatestVersionsSent(
       }
     }
 
-    // Replace confirm prompt with inquirer
-    const { action } = await inquirer.prompt([{
-      type: 'list',
-      name: 'action',
+    // Replace confirm prompt with Cliffy
+    const action = await Select.prompt({
       message: `How would you like to proceed with these ${proposedChanges.length} changes?`,
-      choices: [
+      options: [
         { name: 'Apply all changes', value: 'all' },
         { name: 'Review one by one', value: 'review' },
         { name: 'Cancel', value: 'cancel' }
       ]
-    }]);
+    });
 
     if (action === 'cancel') {
       console.log('Update cancelled.');
@@ -459,22 +453,20 @@ export async function updateLatestVersionsSent(
       }
       console.log(`\n✅ All updates completed successfully! Processed ${totalShots} shots, updated ${proposedChanges.length} shots.`);
     } else if (action === 'review') {
-      // Replace individual prompts with inquirer
+      // Replace individual prompts with Cliffy
       for (const change of proposedChanges) {
-        const { confirm } = await inquirer.prompt([{
-          type: 'list',
-          name: 'confirm',
+        const confirm = await Select.prompt({
           message: `
 Update ${chalk.bold(change.shotName)} (${change.parentName})?
 Version: ${chalk.red(change.currentVersion)} → ${chalk.green(change.newVersion)}
 Date: ${chalk.red(formatDate(change.currentDate))} → ${chalk.green(formatDate(change.newDate))}
           `,
-          choices: [
+          options: [
             { name: 'Yes', value: 'yes' },
             { name: 'No', value: 'no' },
             { name: 'Quit', value: 'quit' }
           ]
-        }]);
+        });
 
         if (confirm === 'quit') {
           console.log('Updates stopped by user.');
@@ -530,12 +522,10 @@ Date: ${chalk.red(formatDate(change.currentDate))} → ${chalk.green(formatDate(
             console.log(`Updated ${change.shotName}: ${change.currentVersion} → ${change.newVersion} (Date: ${change.dateSent || 'Not set'})`);
           } catch (error) {
             console.error(`Failed to update shot ${change.shotName}:`, error);
-            const { continueAfterError } = await inquirer.prompt([{
-              type: 'confirm',
-              name: 'continueAfterError',
+            const continueAfterError = await Confirm.prompt({
               message: 'Continue with remaining updates?',
               default: true
-            }]);
+            });
             
             if (!continueAfterError) {
               break;

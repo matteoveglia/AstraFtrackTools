@@ -16,7 +16,7 @@
  */
 
 import { Session } from '@ftrack/api';
-import inquirer from 'inquirer';
+import { Select, Input, Confirm } from '@cliffy/prompt';
 import chalk from 'chalk';
 import type { 
   List,
@@ -56,11 +56,9 @@ export async function manageLists(
     console.log(chalk.blue(`\nManaging lists for: ${contextInfo}\n`));
 
     // Mode selection
-    const { mode } = await inquirer.prompt({
-      type: 'list',
-      name: 'mode',
+    const mode = await Select.prompt({
       message: 'What would you like to do?',
-      choices: [
+      options: [
         { name: '📝 Add shots to a list', value: 'add_shots' },
         { name: '➕ Create a new list', value: 'create_list' },
         { name: '🗑️  Delete a list', value: 'delete_list' }
@@ -146,12 +144,9 @@ async function selectCategory(listsByCategory: Record<string, List[]>): Promise<
 
   categoryChoices.push({ name: '❌ Cancel', value: 'CANCEL' });
 
-  const { selectedCategory } = await inquirer.prompt({
-    type: 'list',
-    name: 'selectedCategory',
+  const selectedCategory = await Select.prompt({
     message: 'Select a category to view lists:',
-    choices: categoryChoices,
-    pageSize: 15
+    options: categoryChoices
   });
 
   return selectedCategory === 'CANCEL' ? null : selectedCategory;
@@ -209,12 +204,9 @@ async function selectListFromCategory(
 
   const pageInfo = totalPages > 1 ? ` (Page ${page}/${totalPages})` : '';
 
-  const { selection } = await inquirer.prompt({
-    type: 'list',
-    name: 'selection',
+  const selection = await Select.prompt({
     message: `Select a list from "${categoryName}"${pageInfo}:`,
-    choices,
-    pageSize: 20
+    options: choices
   });
 
   return {
@@ -318,11 +310,9 @@ async function handleCreateList(
   let isNameValid = false;
   
   while (!isNameValid) {
-    const { listName } = await inquirer.prompt({
-      type: 'input',
-      name: 'listName',
+    const listName = await Input.prompt({
       message: 'Enter the name for the new list:',
-      validate: (input) => {
+      validate: (input: string) => {
         if (!input.trim()) {
           return 'List name cannot be empty';
         }
@@ -347,11 +337,9 @@ async function handleCreateList(
     if (existingListResponse.data && existingListResponse.data.length > 0) {
       console.log(chalk.red(`\nA list named "${trimmedName}" already exists in the current context.`));
       
-      const { action } = await inquirer.prompt({
-        type: 'list',
-        name: 'action',
+      const action = await Select.prompt({
         message: 'What would you like to do?',
-        choices: [
+        options: [
           { name: '✏️  Enter a different name', value: 'retry' },
           { name: '❌ Cancel list creation', value: 'cancel' }
         ]
@@ -373,12 +361,9 @@ async function handleCreateList(
     value: cat.id
   }));
 
-  const { categoryId } = await inquirer.prompt({
-    type: 'list',
-    name: 'categoryId',
+  const categoryId = await Select.prompt({
     message: 'Select a category for the new list:',
-    choices: categoryChoices,
-    pageSize: 15
+    options: categoryChoices
   });
 
   // Get project ID for the list
@@ -406,12 +391,9 @@ async function handleCreateList(
       value: project.id
     }));
 
-    const { selectedProjectId } = await inquirer.prompt({
-      type: 'list',
-      name: 'selectedProjectId',
+    const selectedProjectId = await Select.prompt({
       message: 'Select a project for the new list:',
-      choices: projectChoices,
-      pageSize: 15
+      options: projectChoices
     });
 
     projectId = selectedProjectId;
@@ -424,9 +406,7 @@ async function handleCreateList(
 
   // Confirm creation
   const selectedCategory = categories.find(cat => cat.id === categoryId);
-  const { confirm } = await inquirer.prompt({
-    type: 'confirm',
-    name: 'confirm',
+  const confirm = await Confirm.prompt({
     message: `Create list "${trimmedName}" in category "${selectedCategory?.name}"?`,
     default: true
   });
@@ -547,11 +527,9 @@ async function handleDeleteList(
   console.log(chalk.red('\n   This will permanently delete the list and all its associations!'));
 
   // Double confirmation
-  await inquirer.prompt({
-    type: 'input',
-    name: 'confirmName',
+  await Input.prompt({
     message: `Type the list name "${selectedListName}" to confirm deletion:`,
-    validate: (input) => {
+    validate: (input: string) => {
       if (input.trim() !== selectedListName) {
         return `You must type "${selectedListName}" exactly to confirm`;
       }
@@ -559,9 +537,7 @@ async function handleDeleteList(
     }
   });
 
-  const { finalConfirm } = await inquirer.prompt({
-    type: 'confirm',
-    name: 'finalConfirm',
+  const finalConfirm = await Confirm.prompt({
     message: chalk.red('Are you absolutely sure you want to delete this list?'),
     default: false
   });
@@ -601,11 +577,9 @@ async function addShotsToList(
   listName: string
 ): Promise<void> {
   // Ask user for input mode
-  const { inputMode } = await inquirer.prompt({
-    type: 'list',
-    name: 'inputMode',
+  const inputMode = await Select.prompt({
     message: 'How would you like to input shot codes?',
-    choices: [
+    options: [
       { name: '📝 Terminal input (comma-separated)', value: 'terminal' },
       { name: '📄 Editor (paste list)', value: 'editor' },
       { name: '❌ Cancel', value: 'cancel' }
@@ -621,11 +595,9 @@ async function addShotsToList(
 
   if (inputMode === 'terminal') {
     // Terminal mode - direct input
-    const { terminalInput } = await inquirer.prompt({
-      type: 'input',
-      name: 'terminalInput',
+    const terminalInput = await Input.prompt({
       message: 'Enter shot codes (comma-separated, e.g., SHOT001, SHOT002, SHOT003):',
-      validate: (input) => {
+      validate: (input: string) => {
         if (!input.trim()) {
           return 'Please enter at least one shot code';
         }
@@ -635,12 +607,10 @@ async function addShotsToList(
     shotCodes = terminalInput;
   } else {
     // Editor mode - existing functionality
-    const { editorInput } = await inquirer.prompt({
-      type: 'editor',
-      name: 'editorInput',
+    const editorInput = await Input.prompt({
       message: 'Enter shot codes (comma separated or one per line):\nIf this opens Vim, just paste, then type :wq and press Enter\n',
       default: '',
-      validate: (input) => {
+      validate: (input: string) => {
         if (!input.trim()) {
           return 'Please enter at least one shot code, press Enter to open editor';
         }
@@ -720,11 +690,9 @@ async function addShotsToList(
   }
 
   // Confirm with user
-  const { action } = await inquirer.prompt({
-    type: 'list',
-    name: 'action',
+  const action = await Select.prompt({
     message: `Add ${shotsToAdd.length} shots to list "${listName}"?`,
-    choices: [
+    options: [
       { name: 'Yes - Add these shots', value: 'yes' },
       { name: 'No - Cancel operation', value: 'no' },
       { name: 'Change/Revise - Modify shot selection', value: 'change' }

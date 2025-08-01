@@ -1,5 +1,5 @@
 import type { Session } from "@ftrack/api";
-import inquirer from "inquirer";
+import { Input } from "@cliffy/prompt";
 import { debug } from "../utils/debug.ts";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
@@ -19,20 +19,16 @@ export async function inspectTask(
   try {
     // Prompt for task ID if not provided
     if (!taskId) {
-      const { inputTaskId } = await inquirer.prompt([
-        {
-          type: "input",
-          name: "inputTaskId",
-          message: "Enter the Task ID to inspect:",
-          validate: (input) => {
-            if (!input.trim()) {
-              return "Task ID is required";
-            }
-            return true;
-          },
+      taskId = await Input.prompt({
+        message: "Enter the Task ID to inspect:",
+        validate: (input: string) => {
+          if (!input.trim()) {
+            return "Task ID is required";
+          }
+          return true;
         },
-      ]);
-      taskId = inputTaskId.trim();
+      });
+      taskId = taskId.trim();
     }
 
     console.log(`\n🔍 Inspecting Task: ${taskId} (${contextDisplay})`);

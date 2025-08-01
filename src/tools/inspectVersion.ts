@@ -1,5 +1,5 @@
 import type { Session } from "@ftrack/api";
-import inquirer from "inquirer";
+import { Input } from "@cliffy/prompt";
 import { debug } from "../utils/debug.ts";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
@@ -19,20 +19,16 @@ export async function inspectVersion(
   try {
     // Prompt for version ID if not provided
     if (!versionId) {
-      const { inputVersionId } = await inquirer.prompt([
-        {
-          type: "input",
-          name: "inputVersionId",
-          message: "Enter the Version ID to inspect:",
-          validate: (input) => {
-            if (!input.trim()) {
-              return "Version ID is required";
-            }
-            return true;
-          },
+      versionId = await Input.prompt({
+        message: "Enter the Version ID to inspect:",
+        validate: (input: string) => {
+          if (!input.trim()) {
+            return "Version ID is required";
+          }
+          return true;
         },
-      ]);
-      versionId = inputVersionId.trim();
+      });
+      versionId = versionId.trim();
     }
 
     console.log(`\n🔍 Inspecting Version: ${versionId} (${contextDisplay})`);

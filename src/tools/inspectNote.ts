@@ -1,5 +1,5 @@
 import type { Session } from "@ftrack/api";
-import inquirer from "inquirer";
+import { Input } from "@cliffy/prompt";
 import { debug } from "../utils/debug.ts";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
@@ -19,20 +19,16 @@ export async function inspectNote(
   try {
     // Prompt for note ID if not provided
     if (!noteId) {
-      const { inputNoteId } = await inquirer.prompt([
-        {
-          type: "input",
-          name: "inputNoteId",
-          message: "Enter the Note ID to inspect:",
-          validate: (input) => {
-            if (!input.trim()) {
-              return "Note ID is required";
-            }
-            return true;
-          },
+      noteId = await Input.prompt({
+        message: "Enter the Note ID to inspect:",
+        validate: (input: string) => {
+          if (!input.trim()) {
+            return "Note ID is required";
+          }
+          return true;
         },
-      ]);
-      noteId = inputNoteId.trim();
+      });
+      noteId = noteId.trim();
     }
 
     console.log(`\n🔍 Inspecting Note: ${noteId} (${contextDisplay})`);

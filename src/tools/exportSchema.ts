@@ -6,7 +6,7 @@ import yaml from "js-yaml";
 import { createObjectCsvWriter } from "csv-writer";
 import type { Session } from "@ftrack/api";
 import { debug } from "../utils/debug.ts";
-import inquirer from "inquirer";
+import { Select } from '@cliffy/prompt';
 import { ProjectContextService } from "../services/projectContext.ts";
 import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
 
@@ -417,29 +417,25 @@ export async function exportSchema(
 
     // Add post-export menu only in interactive mode
     if (interactive) {
-      const { nextAction } = await inquirer.prompt([{
-        type: "list",
-        name: "nextAction",
+      const nextAction = await Select.prompt({
         message: "What would you like to do next?",
-        choices: [
+        options: [
           { name: "Export in another format", value: "export_again" },
           { name: "Return to main menu", value: "main_menu" },
-        ],
-      }]);
+        ]
+      });
 
       if (nextAction === "export_again") {
-        const { newFormat } = await inquirer.prompt([{
-          type: "list",
-          name: "newFormat",
+        const newFormat = await Select.prompt({
           message: "Select export format:",
-          choices: [
+          options: [
             { name: "Export to JSON", value: "json" },
             { name: "Export to YAML", value: "yaml" },
             { name: "Export to CSV", value: "csv" },
             { name: "Generate TypeScript (.ts) file", value: "ts" },
-          ].filter((choice) => choice.value !== format), // Remove current format from choices
-        }]);
-        return exportSchema(session, projectContextService, newFormat, interactive);
+          ].filter((choice) => choice.value !== format) // Remove current format from choices
+        });
+        return exportSchema(session, projectContextService, newFormat as "json" | "yaml" | "csv" | "ts", interactive);
       }
     }
 

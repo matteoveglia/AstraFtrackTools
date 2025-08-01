@@ -1,6 +1,6 @@
 import { Session } from "@ftrack/api";
 
- import inquirer from "inquirer";
+import { Select, Input, Confirm, Secret } from "@cliffy/prompt";
 import { updateLatestVersionsSent } from "./tools/updateLatestVersions.ts";
 import { exportSchema } from "./tools/exportSchema.ts";
 import { inspectVersion } from "./tools/inspectVersion.ts";
@@ -11,7 +11,7 @@ import { debug } from "./utils/debug.ts";
 import { loadPreferences, savePreferences } from "./utils/preferences.ts";
 import { inspectNote } from "./tools/inspectNote.ts";
 import { manageLists } from "./tools/manageLists.ts";
-import { initInquirerPrompt } from "./utils/inquirerInit.ts";
+import { initCliffyPrompt } from "./utils/cliffyInit.ts";
 import { selectProject, displayProjectContext, type ProjectContext } from "./utils/projectSelection.ts";
 import { SessionService } from "./services/session.ts";
 import { ProjectContextService } from "./services/projectContext.ts";
@@ -135,49 +135,40 @@ async function testFtrackCredentials(
 
 async function setAndTestCredentials(): Promise<boolean> {
   while (true) { // Loop until valid credentials or user quits
-    const answers = await inquirer.prompt([
-      {
-        type: "input",
-        name: "server",
-        message: "Ftrack Server URL:",
-        default: (await loadPreferences()).FTRACK_SERVER,
-      },
-      {
-        type: "input",
-        name: "user",
-        message: "API User:",
-        default: (await loadPreferences()).FTRACK_API_USER,
-      },
-      {
-        type: "password",
-        name: "key",
-        message: "API Key:",
-        mask: "*",
-      },
-    ]);
+    const prefs = await loadPreferences();
+    
+    const server = await Input.prompt({
+      message: "Ftrack Server URL:",
+      default: prefs.FTRACK_SERVER,
+    });
 
-    const shouldTest = await inquirer.prompt([{
-      type: "confirm",
-      name: "test",
+    const user = await Input.prompt({
+      message: "API User:",
+      default: prefs.FTRACK_API_USER,
+    });
+
+    const key = await Secret.prompt({
+       message: "API Key:",
+     });
+
+    const shouldTest = await Confirm.prompt({
       message: "Would you like to test these credentials?",
       default: true,
-    }]);
+    });
 
-    if (shouldTest.test) {
+    if (shouldTest) {
       const isValid = await testFtrackCredentials(
-        answers.server,
-        answers.user,
-        answers.key,
+        server,
+        user,
+        key,
       );
       if (!isValid) {
-        const retry = await inquirer.prompt([{
-          type: "confirm",
-          name: "again",
+        const retry = await Confirm.prompt({
           message: "Would you like to try again?",
           default: true,
-        }]);
+        });
 
-        if (!retry.again) {
+        if (!retry) {
           return false; // User chose to quit
         }
         continue; // Try again
@@ -185,9 +176,9 @@ async function setAndTestCredentials(): Promise<boolean> {
     }
 
     await savePreferences({
-      FTRACK_SERVER: answers.server,
-      FTRACK_API_USER: answers.user,
-      FTRACK_API_KEY: answers.key,
+      FTRACK_SERVER: server,
+      FTRACK_API_USER: user,
+      FTRACK_API_KEY: key,
     });
 
     console.log("Credentials saved successfully");
@@ -251,78 +242,11 @@ const tools: Tool[] = [
     description: "Configure Ftrack API credentials",
     action: setAndTestCredentials,
   },
-  {
-    name: "🔧 Test First Keypress Issue",
-    value: "test-keypress",
-    description: "Phase 7 debugging: Test first keypress issue",
-    action: () => {
-      
-      console.log("This test is no longer available. It was part of the Inquirer.js debugging process.");
-        return Promise.resolve();
-    },
-  },
-  {
-    name: "🔧 Test Input Workarounds",
-    value: "test-workarounds",
-    description: "Phase 7.3: Test different workarounds for input issue",
-    action: () => {
-      
-      console.log("This test is no longer available. It was part of the Inquirer.js debugging process.");
-        return Promise.resolve();
-    },
-  },
-  {
-    name: "🔧 Analyze Input Events",
-    value: "analyze-events",
-    description: "Phase 7.3: Detailed input event analysis",
-    action: () => {
-      
-      console.log("This test is no longer available. It was part of the Inquirer.js debugging process.");
-        return Promise.resolve();
-    }
-  },
+
 ];
 
-// Main menu questions - will be updated with project context
-const menuQuestion = {
-  type: "list",
-  name: "tool",
-  message: "Select a tool to run:",
-  choices: [
-    ...tools.map((tool) => ({
-      name: `${tool.name} - ${tool.description}`,
-      value: tool.value,
-    })),
-    { name: "Change Project", value: "change-project" },
-    { name: "Exit", value: "exit" },
-  ],
-} as const;
-
-// Function to update menu with project context
-function updateMenuWithContext(projectContext: ProjectContext) {
-  const contextDisplay = displayProjectContext(projectContext);
-  return {
-    type: "list" as const,
-    name: "tool" as const,
-    message: `[${contextDisplay}] Select a tool to run:`,
-    choices: [
-      ...tools.map((tool) => ({
-        name: `${tool.name} - ${tool.description}`,
-        value: tool.value,
-      })),
-      { name: "Change Project", value: "change-project" },
-      { name: "Exit", value: "exit" },
-    ],
-  };
-}
-
-// After tool completion question
-const continueQuestion = {
-  type: "confirm",
-  name: "cont",
-  message: "Would you like to run another tool?",
-  default: true,
-} as const;
+// Function to update menu with project context - no longer needed with Cliffy
+// Keeping for reference during migration
 
 async function runTool(
   session: Session,
@@ -370,10 +294,7 @@ async function runTool(
     case "propagateThumbnails":
       await propagateThumbnails(session, projectContextService, queryService);
       break;
-    case "set-credentials":
-    case "test-keypress":
-    case "test-workarounds":
-    case "analyze-events": {
+    case "set-credentials": {
       const selectedTool = tools.find((t) => t.value === tool);
       if (selectedTool?.action) {
         await selectedTool.action();
@@ -391,8 +312,8 @@ async function main() {
   console.log("Astra Ftrack Tools");
   console.log("==================");
 
-  // Apply inquirer fix for Deno environment (now no-op for Phase 7 investigation)
-  initInquirerPrompt();
+  // Apply cliffy initialization for Deno environment
+  initCliffyPrompt();
 
   try {
     const { session, projectContext } = await initSession();
@@ -401,12 +322,19 @@ async function main() {
     let running = true;
 
     while (running) {
-      // Use the appropriate menu based on project context
-      const currentMenu = currentProjectContext 
-        ? updateMenuWithContext(currentProjectContext)
-        : menuQuestion;
-      
-      const { tool } = await inquirer.prompt(currentMenu);
+      const tool = await Select.prompt({
+        message: currentProjectContext 
+          ? `[${displayProjectContext(currentProjectContext)}] Select a tool to run:`
+          : "Select a tool to run:",
+        options: [
+          ...tools.map((tool) => ({
+            name: `${tool.name} - ${tool.description}`,
+            value: tool.value,
+          })),
+          { name: "Change Project", value: "change-project" },
+          { name: "Exit", value: "exit" },
+        ],
+      });
 
       if (tool === "exit") {
         running = false;
@@ -424,19 +352,20 @@ async function main() {
       const selectedTool = tools.find((t) => t.value === tool);
 
       if (selectedTool?.subMenu) {
-        const { subOption } = await inquirer.prompt({
-           type: "list",
-           name: "subOption",
-           message: `Select ${selectedTool.name} option:`,
-           choices: selectedTool.subMenu,
-         });
+        const subOption = await Select.prompt({
+          message: `Select ${selectedTool.name} option:`,
+          options: selectedTool.subMenu,
+        });
 
-        await runTool(session, tool, subOption);
+        await runTool(session, tool, subOption as ExportFormat);
       } else {
         await runTool(session, tool);
       }
 
-      const { cont } = await inquirer.prompt(continueQuestion);
+      const cont = await Confirm.prompt({
+        message: "Would you like to run another tool?",
+        default: true,
+      });
 
       running = cont;
     }
