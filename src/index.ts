@@ -187,12 +187,31 @@ async function setAndTestCredentials(): Promise<boolean> {
 }
 
 // Available tools organized by scope
+const projectTools: Tool[] = [
+  {
+    name: "📁 Update Latest Versions Sent",
+    value: "updateVersions",
+    description: "Updates all shots with their latest delivered version",
+  },
+  {
+    name: "📁 Manage Lists",
+    value: "manageLists",
+    description: "Create, Edit and Delete Lists",
+  },
+  {
+    name: "📁 Propagate Thumbnails",
+    value: "propagateThumbnails",
+    description:
+      "Update shots with thumbnails from their latest versions",
+  },
+];
+
 const globalTools: Tool[] = [
   {
     name: "🌍 Export Schema",
     value: "exportSchema",
     description:
-      "Exports schema information for major entity types including custom attributes",
+      "Dev Tool: Exports schema information for major entity types including custom attributes",
     subMenu: [
       { name: "Export to JSON", value: "json" },
       { name: "Export to YAML", value: "yaml" },
@@ -203,7 +222,7 @@ const globalTools: Tool[] = [
   {
     name: "🌍 Inspect Version",
     value: "inspectVersion",
-    description: "Inspect a specific version's relationships",
+    description: "Inspect a specific version's details and relationships",
   },
   {
     name: "🌍 Inspect Shot",
@@ -213,37 +232,21 @@ const globalTools: Tool[] = [
   {
     name: "🌍 Inspect Task",
     value: "inspectTask",
-    description: "Inspect a specific task's details and time logs",
+    description: "Inspect a specific task's details and relationships",
   },
   {
     name: "🌍 Inspect Note",
     value: "inspectNote",
     description: "Inspect a specific note and its attachments",
   },
+];
+
+const settingsTools: Tool[] = [
   {
-    name: "🌍 Set Ftrack Credentials",
+    name: "⚙️ Set Ftrack Credentials",
     value: "set-credentials",
     description: "Configure Ftrack API credentials",
     action: setAndTestCredentials,
-  },
-];
-
-const projectTools: Tool[] = [
-  {
-    name: "📁 Update Latest Versions Sent",
-    value: "updateVersions",
-    description: "Updates all shots with their latest delivered version",
-  },
-  {
-    name: "📁 Manage Lists",
-    value: "manageLists",
-    description: "Manage lists and add shots to them by code",
-  },
-  {
-    name: "📁 Propagate Thumbnails",
-    value: "propagateThumbnails",
-    description:
-      "Update shots with thumbnails from their latest asset versions",
   },
 ];
 
@@ -297,7 +300,7 @@ async function runTool(
       await propagateThumbnails(session, projectContextService, queryService);
       break;
     case "set-credentials": {
-      const allTools = [...globalTools, ...projectTools];
+      const allTools = [...projectTools, ...globalTools, ...settingsTools];
       const selectedTool = allTools.find((t) => t.value === tool);
       if (selectedTool?.action) {
         await selectedTool.action();
@@ -312,7 +315,7 @@ async function runTool(
 
 // Helper function to find a tool by value
 function findTool(toolValue: string): Tool | undefined {
-  const allTools = [...globalTools, ...projectTools];
+  const allTools = [...projectTools, ...globalTools, ...settingsTools];
   return allTools.find(t => t.value === toolValue);
 }
 
@@ -334,6 +337,15 @@ async function main() {
       // Build menu options with proper grouping
       const menuOptions = [];
       
+      // Add project tools section first
+      if (projectTools.length > 0) {
+        menuOptions.push({ name: "─── Project Based ───", value: "separator-project", disabled: true });
+        menuOptions.push(...projectTools.map((tool) => ({
+          name: `${tool.name} - ${tool.description}`,
+          value: tool.value,
+        })));
+      }
+      
       // Add global tools section
       if (globalTools.length > 0) {
         menuOptions.push({ name: "─── All Projects - tools ignore project selection ───", value: "separator-global", disabled: true });
@@ -343,10 +355,10 @@ async function main() {
         })));
       }
       
-      // Add project tools section
-      if (projectTools.length > 0) {
-        menuOptions.push({ name: "─── Project Based ───", value: "separator-project", disabled: true });
-        menuOptions.push(...projectTools.map((tool) => ({
+      // Add settings section
+      if (settingsTools.length > 0) {
+        menuOptions.push({ name: "─── Settings ───", value: "separator-settings", disabled: true });
+        menuOptions.push(...settingsTools.map((tool) => ({
           name: `${tool.name} - ${tool.description}`,
           value: tool.value,
         })));
