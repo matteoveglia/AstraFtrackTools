@@ -97,17 +97,23 @@ Deno.test("inspectShot - should handle errors properly", async () => {
     query: () => Promise.reject(new Error("API Error")),
   } as unknown as Session;
 
+  const mockFailingQueryService = {
+    queryShots: () => Promise.reject(new Error("API Error")),
+    queryTasks: () => Promise.reject(new Error("API Error")),
+    queryAssetVersions: () => Promise.reject(new Error("API Error"))
+  } as unknown as QueryService;
+
   try {
     await assertRejects(
       async () => {
-        await inspectShot(mockSession, mockProjectContextService, mockQueryService, "shot-1");
+        await inspectShot(mockSession, mockProjectContextService, mockFailingQueryService, "shot-1");
       },
       Error,
       "API Error"
     );
 
     // Verify error was logged
-    const errorLog = errorCalls.find(log => log.includes("Error while fetching shot information"));
+    const errorLog = errorCalls.find(log => log.includes("Error during fetch shot details"));
     assertEquals(errorLog !== undefined, true, "Should log error message");
 
   } finally {

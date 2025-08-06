@@ -64,6 +64,13 @@ interface DateMap {
   [shotId: string]: string;
 }
 
+// Helper function to reliably detect interactive TTY environments (works better than Deno.stdin.isTerminal in tests)
+function isInteractive(): boolean {
+  return typeof Deno !== 'undefined' &&
+    typeof (Deno as unknown as { isatty?: (rid: number) => boolean }).isatty === 'function' &&
+    (Deno as unknown as { isatty: (rid: number) => boolean }).isatty((Deno.stdin as unknown as { rid: number }).rid);
+}
+
 // Helper function for date formatting
 function formatDate(dateString: string | null): string {
   if (!dateString) return 'Not set';
@@ -92,14 +99,18 @@ export async function updateLatestVersionsSent(
     
     console.log(chalk.blue(`\nUpdating latest versions for: ${contextInfo}\n`));
 
-    const mode = await Select.prompt({
-      message: 'Select update mode:',
-      options: [
-        { name: 'Check for new changes only', value: 'new' },
-        { name: 'Force update all shots', value: 'force' }
-      ],
-      default: 'new'
-    });
+    let mode: 'new' | 'force' = 'new';
+    // Skip interactive prompt in non-interactive environments (e.g., automated tests)
+    if (isInteractive()) {
+      mode = await Select.prompt({
+        message: 'Select update mode:',
+        options: [
+          { name: 'Check for new changes only', value: 'new' },
+          { name: 'Force update all shots', value: 'force' }
+        ],
+        default: 'new'
+      }) as 'new' | 'force';
+    }
 
     const forceUpdate = mode === 'force';
     debug(`Update mode: ${forceUpdate ? 'Force update' : 'New changes only'}`);
@@ -121,8 +132,9 @@ export async function updateLatestVersionsSent(
       and object_type_id in (select id from ObjectType where name is "Shot")
     `);
 
-    if (!configResponse.data || !dateConfigResponse.data) {
-      console.log("\r❌ Failed to load configurations");
+    // ... existing code ...
+    if (!configResponse.data?.length || !dateConfigResponse.data?.length) {
+      console.log("❌ Failed to load configurations");
       throw new Error('Could not find necessary configurations');
     }
 
@@ -292,6 +304,7 @@ export async function updateLatestVersionsSent(
             });
           }
         }
+
       } else {
         noDeliveredVersions.push({ 
           name: shot.name, 
@@ -393,14 +406,17 @@ export async function updateLatestVersionsSent(
     }
 
     // Replace confirm prompt with Cliffy
-    const action = await Select.prompt({
+    let action = 'cancel';
+    if (isInteractive()) {
+      action = await Select.prompt({
       message: `How would you like to proceed with these ${proposedChanges.length} changes?`,
       options: [
         { name: 'Apply all changes', value: 'all' },
         { name: 'Review one by one', value: 'review' },
         { name: 'Cancel', value: 'cancel' }
       ]
-    });
+          });
+    }
 
     if (action === 'cancel') {
       console.log('Update cancelled.');
@@ -466,7 +482,9 @@ export async function updateLatestVersionsSent(
     } else if (action === 'review') {
       // Replace individual prompts with Cliffy
       for (const change of proposedChanges) {
-        const confirm = await Select.prompt({
+        let confirm = 'no';
+        if (isInteractive()) {
+          confirm = await Select.prompt({
           message: `
 Update ${chalk.bold(change.shotName)} (${change.parentName})?
 Version: ${chalk.red(change.currentVersion)} → ${chalk.green(change.newVersion)}
@@ -478,6 +496,7 @@ Date: ${chalk.red(formatDate(change.currentDate))} → ${chalk.green(formatDate(
             { name: 'Quit', value: 'quit' }
           ]
         });
+        }
 
         if (confirm === 'quit') {
           console.log('Updates stopped by user.');

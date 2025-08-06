@@ -20,10 +20,17 @@ export const isDebugMode = (): boolean => {
  * Debug logging function that only logs when DEBUG=true
  * Formats the [DEBUG] prefix with a dark red background
  */
-export const debug = (...args: unknown[]): void => {
+export let debug = (...args: unknown[]): void => {
   if (isDebugMode()) {
     const debugPrefix =
       `${colors.bgDarkRed}${colors.bright}[DEBUG]${colors.reset}`;
     console.log(debugPrefix, ...args);
   }
+};
+
+/**
+ * Override the debug implementation (used in tests)
+ */
+export const setDebugLogger = (logger: (...args: unknown[]) => void): void => {
+  debug = logger;
 };

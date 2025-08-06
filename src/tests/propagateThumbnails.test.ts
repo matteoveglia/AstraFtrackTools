@@ -34,14 +34,16 @@ function createMockProjectContextService(isGlobal = false) {
   } as ProjectContextService;
 }
 
-function createMockQueryService(queryResponses: unknown[]) {
-  let queryCallCount = 0;
+function createMockQueryService(queryShotResponses: unknown[], versionsResponse: unknown[] = mockVersions) {
+  let shotCallCount = 0;
   return {
     queryShots: () => {
-      const response = queryResponses[queryCallCount];
-      queryCallCount++;
+      const response = queryShotResponses[shotCallCount] ?? [];
+      shotCallCount++;
       return Promise.resolve({ data: response });
-    }
+    },
+    // Provide versions for propagateThumbnails logic
+    queryAssetVersions: () => Promise.resolve({ data: versionsResponse })
   } as QueryService;
 }
 
@@ -70,7 +72,7 @@ Deno.test("propagateThumbnails - should update thumbnail for a specific shot wit
   let updateParams: unknown[] = [];
   
   const mockSession = createMockSession(
-    [mockVersions, mockShotDetails], // Only need versions and shot details for session.query
+    [mockShotDetails], // Only need shot details for session.query
     (...args: unknown[]) => {
       updateCalled = true;
       updateParams = args;
@@ -147,16 +149,17 @@ Deno.test("propagateThumbnails - should handle shots without versions", async ()
   };
 
   let updateCalled = false;
-  const mockSession = createMockSession(
-    [[]], // Empty versions array
-    () => {
-      updateCalled = true;
-      return Promise.resolve();
-    }
-  );
+  let _updateParams: unknown[] = [];
+  const mockSession = createMockSession([
+    mockShotDetails
+  ], (...args: unknown[]) => {
+    updateCalled = true;
+    _updateParams = args;
+    return Promise.resolve();
+  });
 
   const mockProjectContext = createMockProjectContextService(false);
-  const mockQueryService = createMockQueryService([mockShots.slice(0, 1)]);
+  const mockQueryService = createMockQueryService([mockShots.slice(0, 1)], []);
 
   try {
     await propagateThumbnails(mockSession, mockProjectContext, mockQueryService, "shot-1");

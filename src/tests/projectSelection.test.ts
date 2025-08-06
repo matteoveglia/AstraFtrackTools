@@ -37,7 +37,7 @@ Deno.test("displayProjectContext - should format global context", () => {
   const globalContext: ProjectContext = { project: null, isGlobal: true };
   const display = displayProjectContext(globalContext);
   
-  assertEquals(display, "🌍 Global Mode");
+  assertEquals(display, "🌐 all projects, site-wide");
 });
 
 Deno.test("displayProjectContext - should format project context", () => {

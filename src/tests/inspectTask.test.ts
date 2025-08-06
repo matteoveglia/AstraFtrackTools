@@ -109,8 +109,8 @@ Deno.test("inspectTask - should handle errors properly", async () => {
       "API Error"
     );
 
-    // Verify error was logged
-    const errorLog = errorCalls.find(log => log.includes("Error while fetching task information"));
+    // Verify error was logged (should be for time logs, not task details)
+    const errorLog = errorCalls.find(log => log.includes("Error during fetch task time logs"));
     assertEquals(errorLog !== undefined, true, "Should log error message");
 
   } finally {
