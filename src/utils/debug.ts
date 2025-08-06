@@ -34,3 +34,20 @@ export let debug = (...args: unknown[]): void => {
 export const setDebugLogger = (logger: (...args: unknown[]) => void): void => {
   debug = logger;
 };
+
+/**
+ * Debug logging function that writes to a specific file
+ * Always logs regardless of debug mode for troubleshooting
+ */
+export const debugToFile = async (filePath: string, ...args: unknown[]): Promise<void> => {
+  try {
+    const timestamp = new Date().toISOString();
+    const message = `[${timestamp}] ${args.map(arg => 
+      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+    ).join(' ')}\n`;
+    
+    await Deno.writeTextFile(filePath, message, { append: true });
+  } catch (error) {
+    console.error('Failed to write debug log:', error);
+  }
+};

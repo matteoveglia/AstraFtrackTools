@@ -43,3 +43,4 @@ coverage/
 
 # OS specific
 .DS_Store
+downloadMedia_debug.log
