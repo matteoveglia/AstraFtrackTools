@@ -264,39 +264,16 @@ async function handleMultipleShotsDownload(
   const mediaPreference = await selectMediaPreference();
   const downloadPath = await getDownloadPath();
 
-  // Process each shot's latest version
-  console.log(`\n📥 Starting bulk download from ${shotsWithVersions.length} shot(s)...`);
+  // Process each shot's latest version with concurrency
+  console.log(`\n📥 Starting bulk download from ${shotsWithVersions.length} shot(s) (up to 4 concurrent downloads)...`);
   
-  const failedDownloads: Array<{
-    shot: Shot;
-    version: AssetVersion;
-    components: Component[];
-    reason: string;
-  }> = [];
-  
-  for (let i = 0; i < shotsWithVersions.length; i++) {
-    const { shot, latestVersion } = shotsWithVersions[i];
-    console.log(`\n[${i + 1}/${shotsWithVersions.length}] Processing ${shot.name}...`);
-    
-    const result = await processAssetVersion(
-      latestVersion,
-      componentService,
-      mediaDownloadService,
-      mediaPreference,
-      downloadPath
-    );
-    
-    // If download failed, collect info for fallback processing
-     if (!result.success) {
-       const components = await componentService.getComponentsForAssetVersion(latestVersion.id);
-       failedDownloads.push({
-         shot,
-         version: latestVersion,
-         components,
-         reason: result.reason || 'Unknown error'
-       });
-     }
-  }
+  const failedDownloads = await processShotsWithConcurrency(
+    shotsWithVersions,
+    componentService,
+    mediaDownloadService,
+    mediaPreference,
+    downloadPath
+  );
   
   // Handle fallback downloads if there are any failures
   if (failedDownloads.length > 0) {
@@ -307,6 +284,109 @@ async function handleMultipleShotsDownload(
       downloadPath
     );
   }
+}
+
+/**
+ * Process shots with concurrency (up to 4 concurrent downloads)
+ */
+async function processShotsWithConcurrency(
+  shotsWithVersions: Array<{ shot: Shot; latestVersion: AssetVersion }>,
+  componentService: ComponentService,
+  mediaDownloadService: MediaDownloadService,
+  mediaPreference: MediaPreference,
+  downloadPath: string
+): Promise<Array<{
+  shot: Shot;
+  version: AssetVersion;
+  components: Component[];
+  reason: string;
+}>> {
+  const failedDownloads: Array<{
+    shot: Shot;
+    version: AssetVersion;
+    components: Component[];
+    reason: string;
+  }> = [];
+
+  const BATCH_SIZE = 4;
+  const totalShots = shotsWithVersions.length;
+  let processedCount = 0;
+
+  // Process shots in batches of 4
+  for (let i = 0; i < shotsWithVersions.length; i += BATCH_SIZE) {
+    const batch = shotsWithVersions.slice(i, i + BATCH_SIZE);
+    const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(shotsWithVersions.length / BATCH_SIZE);
+    
+    console.log(`\n🔄 Processing batch ${batchNumber}/${totalBatches} (${batch.length} shots):`);
+    batch.forEach(({ shot }) => console.log(`   • ${shot.name}`));
+
+    // Process batch concurrently
+    const batchPromises = batch.map(async ({ shot, latestVersion }, batchIndex) => {
+      const globalIndex = i + batchIndex + 1;
+      console.log(`\n[${globalIndex}/${totalShots}] Starting ${shot.name}...`);
+      
+      const result = await processAssetVersion(
+        latestVersion,
+        componentService,
+        mediaDownloadService,
+        mediaPreference,
+        downloadPath
+      );
+
+      if (!result.success) {
+         const components = await componentService.getComponentsForAssetVersion(latestVersion.id);
+         return {
+           shot,
+           version: latestVersion,
+           components: components || [],
+           reason: result.reason || 'Unknown error',
+           success: false
+         };
+       }
+
+       return { shot, version: latestVersion, success: true, components: [], reason: '' };
+    });
+
+    // Wait for all downloads in this batch to complete
+    const batchResults = await Promise.allSettled(batchPromises);
+    
+    // Process results and collect failures
+    batchResults.forEach((result, batchIndex) => {
+      const globalIndex = i + batchIndex + 1;
+      const { shot } = batch[batchIndex];
+      
+      if (result.status === 'fulfilled') {
+         if (!result.value.success) {
+           failedDownloads.push({
+             shot: result.value.shot,
+             version: result.value.version,
+             components: result.value.components || [],
+             reason: result.value.reason || 'Unknown error'
+           });
+           console.log(`[${globalIndex}/${totalShots}] ❌ ${shot.name} failed: ${result.value.reason || 'Unknown error'}`);
+         } else {
+           console.log(`[${globalIndex}/${totalShots}] ✅ ${shot.name} completed`);
+         }
+      } else {
+         console.log(`[${globalIndex}/${totalShots}] ❌ ${shot.name} error: ${result.reason}`);
+         // For rejected promises, we'll need to get components for fallback
+         componentService.getComponentsForAssetVersion(batch[batchIndex].latestVersion.id).then(components => {
+           failedDownloads.push({
+             shot,
+             version: batch[batchIndex].latestVersion,
+             components: components || [],
+             reason: `Promise rejected: ${result.reason || 'Unknown error'}`
+           });
+         });
+       }
+    });
+
+    processedCount += batch.length;
+    console.log(`\n📊 Batch ${batchNumber}/${totalBatches} completed. Progress: ${processedCount}/${totalShots} shots processed`);
+  }
+
+  return failedDownloads;
 }
 
 /**
