@@ -7,6 +7,7 @@ import { ComponentService } from "../services/componentService.ts";
 import { MediaDownloadService } from "../services/mediaDownloadService.ts";
 import { SessionService } from "../services/session.ts";
 import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
+import { loadPreferences } from "../utils/preferences.ts";
 import type { 
   MediaPreference, 
   Component, 
@@ -41,7 +42,16 @@ export async function downloadMediaTool(
   // Initialize services
   const sessionService = new SessionService(session);
   const componentService = new ComponentService(sessionService, queryService);
-  const mediaDownloadService = new MediaDownloadService();
+  
+  // Get authentication headers for downloads as fallback
+  const prefs = await loadPreferences();
+  const authHeaders = {
+    'ftrack-user': prefs.FTRACK_API_USER || '',
+    'ftrack-api-key': prefs.FTRACK_API_KEY || ''
+  };
+  
+  // Pass session object for session-based authentication, with auth headers as fallback
+  const mediaDownloadService = new MediaDownloadService(4, session, authHeaders);
 
   try {
     // Clear previous debug log

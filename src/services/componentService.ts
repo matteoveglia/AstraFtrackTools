@@ -92,31 +92,39 @@ export class ComponentService {
   }
 
   /**
-   * Get download URL from component location
+   * Get download URL for a component using Ftrack session method
    * @param componentId - The component ID
-   * @param locationName - The location name (defaults to "ftrack.server")
-   * @returns Promise resolving to the download URL
+   * @returns Promise resolving to download URL or null if not available
    */
-  async getDownloadUrl(componentId: string, locationName: string = "ftrack.server"): Promise<string> {
+  async getDownloadUrl(componentId: string): Promise<string | null> {
     try {
-      debug(`Getting download URL for component ${componentId} from location ${locationName}`);
-      
-      // Get the Ftrack session to access server URL
+      debug(`Getting download URL for component: ${componentId}`);
+
+      // Use the session's getComponentUrl method which handles authentication properly
       const session = this.sessionService.getSession();
-      const serverUrl = session.serverUrl;
       
-      // Construct the download URL using Ftrack's component download endpoint
-      // Ftrack typically provides downloads at: {server_url}/component/{component_id}/download
-      const downloadUrl = `${serverUrl}/component/${componentId}/download`;
-      
-      debug(`Constructed download URL for component ${componentId}: ${downloadUrl}`);
-      return downloadUrl;
-      
+      if (typeof (session as any).getComponentUrl === 'function') {
+        const downloadUrl = await (session as any).getComponentUrl(componentId);
+        
+        if (downloadUrl) {
+          debug(`Got authenticated download URL: ${downloadUrl}`);
+          return downloadUrl;
+        } else {
+          debug(`getComponentUrl returned null for component: ${componentId}`);
+          return null;
+        }
+      } else {
+        debug(`Session does not have getComponentUrl method`);
+        return null;
+      }
+
     } catch (error) {
-      debug(`Failed to get download URL for component ${componentId}: ${error}`);
-      throw error;
+      debug(`Error getting download URL for component ${componentId}: ${error}`);
+      return null;
     }
   }
+
+
 
   /**
    * Find best component based on user preference with fallback logic

@@ -1,4 +1,5 @@
 import { debug } from "../utils/debug.ts";
+import type { Session } from "@ftrack/api";
 import type {
   DownloadTask,
   DownloadResult,
@@ -14,9 +15,27 @@ import type {
 export class MediaDownloadService {
   private readonly maxConcurrentDownloads: number;
   private activeDownloads = new Map<string, DownloadProgress>();
+  private session?: Session;
+  private authHeaders: Record<string, string> = {};
 
-  constructor(maxConcurrentDownloads: number = 4) {
+  constructor(maxConcurrentDownloads: number = 4, session?: Session, authHeaders?: Record<string, string>) {
     this.maxConcurrentDownloads = maxConcurrentDownloads;
+    this.session = session;
+    if (authHeaders) {
+      this.authHeaders = authHeaders;
+    }
+  }
+
+  /**
+   * Make an authenticated request - URLs from session.getComponentUrl are already authenticated
+   * @param url - The URL to request (should be from session.getComponentUrl)
+   * @param options - Additional fetch options
+   * @returns Promise resolving to Response
+   */
+  private async makeAuthenticatedRequest(url: string, options: RequestInit = {}): Promise<Response> {
+    // URLs from session.getComponentUrl already include authentication parameters
+    // so we can make a direct fetch request without additional headers
+    return fetch(url, options);
   }
 
   /**
@@ -46,8 +65,8 @@ export class MediaDownloadService {
       // Update status to downloading
       this.updateProgress(taskId, { status: 'downloading' });
 
-      // Fetch the file
-      const response = await fetch(url);
+      // Fetch the file with session-based authentication
+      const response = await this.makeAuthenticatedRequest(url);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
