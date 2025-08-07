@@ -71,7 +71,7 @@ export interface DownloadResult {
 // Configuration types
 export type MediaPreference = 'original' | 'encoded';
 export type DownloadMode = 'single' | 'multiple';
-export type ComponentType = 'original' | 'encoded-1080p' | 'encoded-720p' | 'other';
+export type ComponentType = 'original' | 'encoded-1080p' | 'encoded-720p' | 'image' | 'other';
 
 // Download progress tracking
 export interface DownloadProgress {

@@ -77,8 +77,19 @@ export class ComponentService {
       return 'encoded-720p';
     }
     
+    // Check for image file types
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'exr', 'dpx', 'bmp', 'gif', 'webp'];
+    const hasImageExtension = imageExtensions.some(ext => 
+      component.file_type?.toLowerCase().includes(ext) || 
+      name.includes(`.${ext}`)
+    );
+    
+    if (hasImageExtension) {
+      return 'image';
+    }
+    
     // Check if it's a video file type that could be original
-    const videoExtensions = ['.mov', '.mp4', '.avi', '.mkv', '.mxf', '.r3d', '.dpx', '.exr'];
+    const videoExtensions = ['.mov', '.mp4', '.avi', '.mkv', '.mxf', '.r3d'];
     const hasVideoExtension = videoExtensions.some(ext => 
       component.file_type?.toLowerCase().includes(ext.substring(1)) || 
       name.includes(ext)
@@ -154,9 +165,9 @@ export class ComponentService {
     let fallbackChain: ComponentType[];
     
     if (preference === 'original') {
-      fallbackChain = ['original', 'encoded-1080p', 'encoded-720p'];
+      fallbackChain = ['original', 'encoded-1080p', 'encoded-720p', 'image'];
     } else {
-      fallbackChain = ['encoded-1080p', 'encoded-720p', 'original'];
+      fallbackChain = ['encoded-1080p', 'encoded-720p', 'image', 'original'];
     }
 
     // Try each type in the fallback chain
@@ -212,5 +223,22 @@ export class ComponentService {
       debug(`Failed to get asset version with components ${assetVersionId}: ${error}`);
       throw error;
     }
+  }
+
+  /**
+   * Format component type for display with additional file type information
+   * @param component - The component to format
+   * @returns Formatted display string
+   */
+  formatComponentTypeDisplay(component: Component): string {
+    const baseType = this.identifyComponentType(component);
+    
+    if (baseType === 'image' && component.file_type) {
+      // Extract file extension and format it nicely
+      const cleanFileType = component.file_type.replace(/^\.+/, '').toUpperCase();
+      return `image (${cleanFileType})`;
+    }
+    
+    return baseType;
   }
 }

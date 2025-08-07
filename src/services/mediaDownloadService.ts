@@ -216,8 +216,9 @@ export class MediaDownloadService {
     const version = `v${assetVersion.version.toString().padStart(3, '0')}`;
     const componentType = this.getComponentTypeForFilename(component);
     
-    // Get file extension from component
-    const extension = component.file_type ? `.${component.file_type}` : '';
+    // Get file extension from component, handling cases where file_type already includes a dot
+    const cleanFileType = component.file_type?.replace(/^\.+/, '') || '';
+    const extension = cleanFileType ? `.${cleanFileType}` : '';
     
     // Create base filename
     const baseFilename = `${shotName}_${assetName}_${version}_${componentType}`;

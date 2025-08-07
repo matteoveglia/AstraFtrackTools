@@ -5,6 +5,7 @@ import { ensureDir } from "jsr:@std/fs";
 import { debugToFile } from "../utils/debug.ts";
 import { loadPreferences } from "../utils/preferences.ts";
 import { withErrorHandling, handleError } from "../utils/errorHandler.ts";
+import { getDownloadsDirectory } from "../utils/systemPaths.ts";
 
 import { SessionService } from "../services/session.ts";
 import { ComponentService } from "../services/componentService.ts";
@@ -13,7 +14,7 @@ import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
 
 import type { Session } from "@ftrack/api";
-import type { AssetVersion, Component, MediaPreference } from "../types/mediaDownload.ts";
+import type { AssetVersion, Component, MediaPreference, Shot } from "../types/mediaDownload.ts";
 
 const DEBUG_LOG_PATH = "/Users/matteoveglia/Documents/Coding/AstraFtrackTools/downloadMedia_debug.log";
 
@@ -139,13 +140,37 @@ async function handleSingleAssetVersionDownload(
   const downloadPath = await getDownloadPath();
 
   // Process the asset version
-  await processAssetVersion(
+  const result = await processAssetVersion(
     assetVersion,
     componentService,
     mediaDownloadService,
     mediaPreference,
     downloadPath
   );
+
+  // Handle fallback if the download failed
+  if (!result.success) {
+    console.log(`\n⚠️  Primary download failed: ${result.reason}`);
+    
+    const components = await componentService.getComponentsForAssetVersion(assetVersion.id);
+    if (components.length > 0) {
+      const failedDownloads = [{
+        shot: { id: assetVersion.asset?.parent?.id || '', name: assetVersion.asset?.parent?.name || 'Unknown' } as Shot,
+        version: assetVersion,
+        components,
+        reason: result.reason || 'Unknown error'
+      }];
+
+      await handleFallbackDownloads(
+        failedDownloads,
+        componentService,
+        mediaDownloadService,
+        downloadPath
+      );
+    } else {
+      console.log(`❌ No components available for fallback`);
+    }
+  }
 }
 
 /**
@@ -198,16 +223,17 @@ async function handleMultipleShotsDownload(
   // Display found shots with their latest versions
   console.log(`\n📋 Found ${matchingShots.length} matching shot(s):`);
   
-  const shotsWithVersions = [];
+  const shotsWithVersions: Array<{ shot: Shot; latestVersion: AssetVersion }> = [];
   for (const shot of matchingShots) {
+    const typedShot = shot as Shot;
     // Get latest asset version for each shot
-    const latestVersion = await getLatestAssetVersionForShot(shot.id, queryService);
+    const latestVersion = await getLatestAssetVersionForShot(typedShot.id, queryService);
     const versionInfo = latestVersion ? `v${latestVersion.version}` : "No versions";
-    console.log(`   - ${shot.name} (Latest version: ${versionInfo})`);
+    console.log(`   - ${typedShot.name} (Latest version: ${versionInfo})`);
     
     if (latestVersion) {
       shotsWithVersions.push({
-        shot,
+        shot: typedShot,
         latestVersion
       });
     }
@@ -236,15 +262,43 @@ async function handleMultipleShotsDownload(
   // Process each shot's latest version
   console.log(`\n📥 Starting bulk download from ${shotsWithVersions.length} shot(s)...`);
   
+  const failedDownloads: Array<{
+    shot: Shot;
+    version: AssetVersion;
+    components: Component[];
+    reason: string;
+  }> = [];
+  
   for (let i = 0; i < shotsWithVersions.length; i++) {
     const { shot, latestVersion } = shotsWithVersions[i];
     console.log(`\n[${i + 1}/${shotsWithVersions.length}] Processing ${shot.name}...`);
     
-    await processAssetVersion(
+    const result = await processAssetVersion(
       latestVersion,
       componentService,
       mediaDownloadService,
       mediaPreference,
+      downloadPath
+    );
+    
+    // If download failed, collect info for fallback processing
+     if (!result.success) {
+       const components = await componentService.getComponentsForAssetVersion(latestVersion.id);
+       failedDownloads.push({
+         shot,
+         version: latestVersion,
+         components,
+         reason: result.reason || 'Unknown error'
+       });
+     }
+  }
+  
+  // Handle fallback downloads if there are any failures
+  if (failedDownloads.length > 0) {
+    await handleFallbackDownloads(
+      failedDownloads,
+      componentService,
+      mediaDownloadService,
       downloadPath
     );
   }
@@ -350,12 +404,14 @@ async function selectMediaPreference(): Promise<MediaPreference> {
  * Get download path from user
  */
 async function getDownloadPath(): Promise<string> {
+  const systemDownloads = getDownloadsDirectory();
+  
   const downloadPath = await Input.prompt({
     message: "Enter download directory path (or press Enter for default):",
-    default: "./downloads"
+    default: systemDownloads
   });
 
-  return downloadPath.trim() || "./downloads";
+  return downloadPath.trim() || systemDownloads;
 }
 
 /**
@@ -367,7 +423,7 @@ async function processAssetVersion(
   mediaDownloadService: MediaDownloadService,
   mediaPreference: MediaPreference,
   downloadPath: string
-): Promise<void> {
+): Promise<{ success: boolean; reason?: string }> {
   try {
     console.log(`\n📋 Processing: ${version.asset?.name || 'Unknown Asset'} v${version.version}`);
 
@@ -376,7 +432,7 @@ async function processAssetVersion(
 
     if (!components || components.length === 0) {
       console.log(`⚠️  No components found for asset version ${version.id}`);
-      return;
+      return { success: false, reason: 'No components found' };
     }
 
     console.log(`📁 Found ${components.length} component(s)`);
@@ -386,7 +442,7 @@ async function processAssetVersion(
 
     if (!bestComponent) {
       console.log(`❌ No suitable component found for preference: ${mediaPreference}`);
-      return;
+      return { success: false, reason: `No suitable component found for preference: ${mediaPreference}` };
     }
 
     const componentType = componentService.identifyComponentType(bestComponent);
@@ -398,7 +454,7 @@ async function processAssetVersion(
       
       if (!downloadUrl) {
         console.log(`❌ Could not get download URL for component: ${bestComponent.name}`);
-        return;
+        return { success: false, reason: 'Could not get download URL' };
       }
 
      // Generate filename
@@ -410,12 +466,224 @@ async function processAssetVersion(
      await mediaDownloadService.downloadFile(downloadUrl, downloadPath, filename);
      console.log(`✅ Download completed: ${filename}`);
 
+     return { success: true };
+
   } catch (error) {
     handleError(error, {
       operation: 'process asset version',
       entity: 'AssetVersion',
       additionalData: { versionId: version.id }
     });
+    return { success: false, reason: `Error: ${error}` };
+  }
+}
+
+/**
+ * Handle fallback downloads for failed media downloads
+ */
+async function handleFallbackDownloads(
+  failedDownloads: Array<{
+    shot: Shot;
+    version: AssetVersion;
+    components: Component[];
+    reason: string;
+  }>,
+  componentService: ComponentService,
+  mediaDownloadService: MediaDownloadService,
+  downloadPath: string
+): Promise<void> {
+  console.log(`\n⚠️  ${failedDownloads.length} shot(s) had missing media. Choose fallback option:`);
+  
+  const fallbackOption = await Select.prompt({
+    message: "How would you like to handle missing media?",
+    options: [
+      { 
+        name: "🤖 Automatic fallback (720p > 1080p > image > original)", 
+        value: "automatic" 
+      },
+      { 
+        name: "🎯 Manual selection (choose for each shot)", 
+        value: "manual" 
+      },
+      { 
+        name: "❌ Skip fallback downloads", 
+        value: "skip" 
+      }
+    ]
+  });
+
+  if (fallbackOption === "skip") {
+    console.log("⏭️  Skipping fallback downloads");
+    return;
+  }
+
+  console.log(`\n📥 Processing ${failedDownloads.length} fallback download(s)...`);
+
+  for (let i = 0; i < failedDownloads.length; i++) {
+    const { shot, version, components } = failedDownloads[i];
+    console.log(`\n[${i + 1}/${failedDownloads.length}] Fallback for ${shot.name}:`);
+    
+    if (components.length === 0) {
+      console.log(`❌ No components available for fallback`);
+      continue;
+    }
+
+    if (fallbackOption === "automatic") {
+      await handleAutomaticFallback(
+        shot,
+        version,
+        components,
+        componentService,
+        mediaDownloadService,
+        downloadPath
+      );
+    } else {
+      await handleManualFallback(
+        shot,
+        version,
+        components,
+        componentService,
+        mediaDownloadService,
+        downloadPath
+      );
+    }
+  }
+}
+
+/**
+ * Handle automatic fallback with priority: 720p > 1080p > image > original
+ */
+async function handleAutomaticFallback(
+  shot: Shot,
+  version: AssetVersion,
+  components: Component[],
+  componentService: ComponentService,
+  mediaDownloadService: MediaDownloadService,
+  downloadPath: string
+): Promise<void> {
+  // Categorize components by type
+  const componentsByType = new Map<string, Component[]>();
+  
+  for (const component of components) {
+    const type = componentService.identifyComponentType(component);
+    if (!componentsByType.has(type)) {
+      componentsByType.set(type, []);
+    }
+    componentsByType.get(type)!.push(component);
+  }
+
+  // Define fallback priority: 720p > 1080p > image > original > other
+  const fallbackPriority = ['encoded-720p', 'encoded-1080p', 'other', 'original'];
+  
+  let selectedComponent: Component | null = null;
+  let selectedType = '';
+
+  for (const type of fallbackPriority) {
+    const componentsOfType = componentsByType.get(type);
+    if (componentsOfType && componentsOfType.length > 0) {
+      // For 'other' type, prefer image files
+      if (type === 'other') {
+        const imageComponent = componentsOfType.find(c => 
+          c.file_type && ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'exr', 'dpx'].some(ext => 
+            c.file_type.toLowerCase().includes(ext)
+          )
+        );
+        if (imageComponent) {
+          selectedComponent = imageComponent;
+          selectedType = 'image';
+          break;
+        }
+      } else {
+        // For other types, pick the largest component
+        selectedComponent = componentsOfType.reduce((best, current) => 
+          (current.size || 0) > (best.size || 0) ? current : best
+        );
+        selectedType = type;
+        break;
+      }
+    }
+  }
+
+  if (!selectedComponent) {
+    console.log(`❌ No suitable fallback component found`);
+    return;
+  }
+
+  console.log(`🎯 Auto-selected: ${selectedComponent.name} (${selectedType})`);
+
+  try {
+    const downloadUrl = await componentService.getDownloadUrl(selectedComponent.id);
+    if (!downloadUrl) {
+      console.log(`❌ Could not get download URL for fallback component`);
+      return;
+    }
+
+    const filename = mediaDownloadService.generateSafeFilename(selectedComponent, version);
+    console.log(`📥 Starting fallback download: ${filename}`);
+    
+    await mediaDownloadService.downloadFile(downloadUrl, downloadPath, filename);
+    console.log(`✅ Fallback download completed: ${filename}`);
+  } catch (error) {
+    console.log(`❌ Fallback download failed: ${error}`);
+  }
+}
+
+/**
+ * Handle manual fallback selection for each shot
+ */
+async function handleManualFallback(
+  shot: Shot,
+  version: AssetVersion,
+  components: Component[],
+  componentService: ComponentService,
+  mediaDownloadService: MediaDownloadService,
+  downloadPath: string
+): Promise<void> {
+  console.log(`📁 Available components for ${shot.name}:`);
+  
+  // Create options for each component with type and size info
+  const componentOptions = components.map((component, index) => {
+    const type = componentService.identifyComponentType(component);
+    const sizeInfo = component.size ? formatBytes(component.size) : 'Unknown size';
+    return {
+      name: `${component.name} (${type}, ${sizeInfo})`,
+      value: index
+    };
+  });
+
+  // Add skip option
+  componentOptions.push({
+    name: "⏭️  Skip this shot",
+    value: -1
+  });
+
+  const selectedIndex = await Select.prompt({
+    message: `Select component to download for ${shot.name}:`,
+    options: componentOptions
+  });
+
+  if (selectedIndex === -1) {
+    console.log(`⏭️  Skipped ${shot.name}`);
+    return;
+  }
+
+  const selectedComponent = components[selectedIndex];
+  console.log(`🎯 Selected: ${selectedComponent.name}`);
+
+  try {
+    const downloadUrl = await componentService.getDownloadUrl(selectedComponent.id);
+    if (!downloadUrl) {
+      console.log(`❌ Could not get download URL for selected component`);
+      return;
+    }
+
+    const filename = mediaDownloadService.generateSafeFilename(selectedComponent, version);
+    console.log(`📥 Starting download: ${filename}`);
+    
+    await mediaDownloadService.downloadFile(downloadUrl, downloadPath, filename);
+    console.log(`✅ Download completed: ${filename}`);
+  } catch (error) {
+    console.log(`❌ Download failed: ${error}`);
   }
 }
 
