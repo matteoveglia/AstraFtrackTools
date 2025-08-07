@@ -1,6 +1,4 @@
 import { Input, Select, Confirm } from "@cliffy/prompt";
-import { join } from "jsr:@std/path";
-import { ensureDir } from "jsr:@std/fs";
 
 import { debugToFile } from "../utils/debug.ts";
 import { loadPreferences } from "../utils/preferences.ts";
@@ -208,10 +206,13 @@ async function handleMultipleShotsDownload(
     return;
   }
 
-  // Filter shots using fuzzy matching (case-insensitive)
-  const matchingShots = allShots.data.filter((shot: any) => 
-    shot.name && shot.name.toLowerCase().includes(searchPattern.toLowerCase())
-  );
+  // Filter shots using fuzzy matching (case-insensitive) or wildcard
+  const matchingShots = searchPattern === "*" 
+    ? allShots.data 
+    : allShots.data.filter((shot: unknown) => {
+        const typedShot = shot as Shot;
+        return typedShot.name && typedShot.name.toLowerCase().includes(searchPattern.toLowerCase());
+      });
 
   await debugToFile(DEBUG_LOG_PATH, "Matching shots found:", matchingShots);
 
@@ -220,8 +221,12 @@ async function handleMultipleShotsDownload(
     return;
   }
 
-  // Display found shots with their latest versions
-  console.log(`\n📋 Found ${matchingShots.length} matching shot(s):`);
+  // Update search message for wildcard
+  if (searchPattern === "*") {
+    console.log(`\n📋 Found ${matchingShots.length} shot(s) in the project:`);
+  } else {
+    console.log(`\n📋 Found ${matchingShots.length} shot(s) matching "${searchPattern}":`);
+  }
   
   const shotsWithVersions: Array<{ shot: Shot; latestVersion: AssetVersion }> = [];
   for (const shot of matchingShots) {
@@ -318,11 +323,17 @@ async function getLatestAssetVersionForShot(shotId: string, queryService: QueryS
     
     if (allVersionsResult?.data && allVersionsResult.data.length > 0) {
       // Log what asset types we found
-      const assetTypes = allVersionsResult.data.map((av: any) => av.asset?.type?.name).filter(Boolean);
+      const assetTypes = allVersionsResult.data.map((av: unknown) => {
+        const typedAv = av as AssetVersion;
+        return typedAv.asset?.type?.name;
+      }).filter(Boolean);
       await debugToFile(DEBUG_LOG_PATH, `Asset types found for shot ${shotId}:`, assetTypes);
       
       // Try to find "Review" type first
-      const reviewVersion = allVersionsResult.data.find((av: any) => av.asset?.type?.name === "Review");
+      const reviewVersion = allVersionsResult.data.find((av: unknown) => {
+        const typedAv = av as AssetVersion;
+        return typedAv.asset?.type?.name === "Review";
+      });
       if (reviewVersion) {
         return reviewVersion as AssetVersion;
       }
@@ -330,7 +341,10 @@ async function getLatestAssetVersionForShot(shotId: string, queryService: QueryS
       // If no Review type, try common media types
       const mediaTypes = ["Comp", "Render", "Movie", "Video", "Media"];
       for (const mediaType of mediaTypes) {
-        const mediaVersion = allVersionsResult.data.find((av: any) => av.asset?.type?.name === mediaType);
+        const mediaVersion = allVersionsResult.data.find((av: unknown) => {
+          const typedAv = av as AssetVersion;
+          return typedAv.asset?.type?.name === mediaType;
+        });
         if (mediaVersion) {
           await debugToFile(DEBUG_LOG_PATH, `Using asset type "${mediaType}" for shot ${shotId}`);
           return mediaVersion as AssetVersion;
@@ -371,7 +385,7 @@ async function promptForAssetVersionId(): Promise<string | null> {
  */
 async function promptForShotSearchPattern(): Promise<string | null> {
   const searchPattern = await Input.prompt({
-    message: "Enter search pattern (e.g., \"SHOT0\") - Which would find all shots containing \"SHOT0\" in their name:",
+    message: "Enter search pattern (e.g., \"SHOT0\" or \"*\" for all shots)\n Example: \"SHOT0\" would find all shots containing \"SHOT0\" in their name:",
     validate: (input: string) => {
       if (!input.trim()) {
         return "Search pattern is required";
@@ -554,7 +568,7 @@ async function handleFallbackDownloads(
  * Handle automatic fallback with priority: 720p > 1080p > image > original
  */
 async function handleAutomaticFallback(
-  shot: Shot,
+  _shot: Shot,
   version: AssetVersion,
   components: Component[],
   componentService: ComponentService,
