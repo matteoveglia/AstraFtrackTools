@@ -1,19 +1,19 @@
-import type { Session } from "@ftrack/api";
-import { Select, Input, Confirm } from "@cliffy/prompt";
-import { debug, debugToFile } from "../utils/debug.ts";
-import { ProjectContextService } from "../services/projectContext.ts";
-import { QueryService } from "../services/queries.ts";
+import { Input, Select, Confirm } from "@cliffy/prompt";
+import { join } from "jsr:@std/path";
+import { ensureDir } from "jsr:@std/fs";
+
+import { debugToFile } from "../utils/debug.ts";
+import { loadPreferences } from "../utils/preferences.ts";
+import { withErrorHandling, handleError } from "../utils/errorHandler.ts";
+
+import { SessionService } from "../services/session.ts";
 import { ComponentService } from "../services/componentService.ts";
 import { MediaDownloadService } from "../services/mediaDownloadService.ts";
-import { SessionService } from "../services/session.ts";
-import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
-import { loadPreferences } from "../utils/preferences.ts";
-import type { 
-  MediaPreference, 
-  Component, 
-  AssetVersion,
-  ComponentType 
-} from "../types/index.ts";
+import { ProjectContextService } from "../services/projectContext.ts";
+import { QueryService } from "../services/queries.ts";
+
+import type { Session } from "@ftrack/api";
+import type { AssetVersion, Component, MediaPreference } from "../types/mediaDownload.ts";
 
 const DEBUG_LOG_PATH = "/Users/matteoveglia/Documents/Coding/AstraFtrackTools/downloadMedia_debug.log";
 
@@ -21,8 +21,8 @@ const DEBUG_LOG_PATH = "/Users/matteoveglia/Documents/Coding/AstraFtrackTools/do
  * Download Media Tool - Downloads media files from Ftrack asset versions
  * 
  * This tool allows users to:
- * - Search and select shots
- * - View available asset versions and components
+ * - Download from single asset version by ID
+ * - Download from multiple shots using fuzzy search
  * - Choose media preferences (original vs encoded)
  * - Download media files with progress tracking
  */
@@ -59,70 +59,14 @@ export async function downloadMediaTool(
     await debugToFile(DEBUG_LOG_PATH, "Project context:", projectContext);
     await debugToFile(DEBUG_LOG_PATH, "Context display:", contextDisplay);
 
-    // Step 1: Shot Selection
-    const shotInput = await promptForShotId();
-    if (!shotInput) return;
+    // Step 1: Initial Selection - Single Asset Version vs Multiple Shots
+    const downloadMode = await selectDownloadMode();
+    await debugToFile(DEBUG_LOG_PATH, "Download mode selected:", downloadMode);
 
-    await debugToFile(DEBUG_LOG_PATH, "Shot input entered:", shotInput);
-    
-    // Step 2: Resolve shot name to ID
-    console.log(`\n🔍 Looking up shot: ${shotInput}`);
-    const shotId = await resolveShotNameToId(shotInput, queryService);
-    if (!shotId) {
-      console.log(`❌ Shot "${shotInput}" not found in project`);
-      return;
-    }
-
-    await debugToFile(DEBUG_LOG_PATH, "Resolved shot ID:", shotId);
-    console.log(`\n🔍 Searching for asset versions in shot: ${shotInput} (ID: ${shotId})`);
-
-    // Step 3: Fetch asset versions for the shot
-    const queryFilter = `asset.parent.id is "${shotId}"`;
-    await debugToFile(DEBUG_LOG_PATH, "Query filter:", queryFilter);
-
-    const assetVersions = await withErrorHandling(
-      async () => {
-        await debugToFile(DEBUG_LOG_PATH, "Executing queryAssetVersions with filter:", queryFilter);
-        const result = await queryService.queryAssetVersions(queryFilter);
-        await debugToFile(DEBUG_LOG_PATH, "Raw query result:", result);
-        return result;
-      },
-      {
-        operation: 'fetch asset versions',
-        entity: 'AssetVersion',
-        additionalData: { shotId, contextDisplay }
-      }
-    );
-
-    await debugToFile(DEBUG_LOG_PATH, "Asset versions result:", assetVersions);
-
-    if (!assetVersions?.data || assetVersions.data.length === 0) {
-      await debugToFile(DEBUG_LOG_PATH, "No asset versions found - result was:", assetVersions);
-      console.log(`❌ No asset versions found for shot "${shotId}"`);
-      return;
-    }
-
-    console.log(`\n📦 Found ${assetVersions.data.length} asset version(s)`);
-
-    // Step 3: Let user select asset version(s)
-    const selectedVersions = await selectAssetVersions(assetVersions.data);
-    if (selectedVersions.length === 0) return;
-
-    // Step 4: Get media preference
-    const mediaPreference = await selectMediaPreference();
-
-    // Step 5: Get download path
-    const downloadPath = await getDownloadPath();
-
-    // Step 6: Process each selected version
-    for (const version of selectedVersions) {
-      await processAssetVersion(
-        version,
-        componentService,
-        mediaDownloadService,
-        mediaPreference,
-        downloadPath
-      );
+    if (downloadMode === "single") {
+      await handleSingleAssetVersionDownload(componentService, mediaDownloadService, queryService);
+    } else {
+      await handleMultipleShotsDownload(componentService, mediaDownloadService, queryService);
     }
 
     console.log("\n✅ Download process completed!");
@@ -138,86 +82,254 @@ export async function downloadMediaTool(
 }
 
 /**
- * Resolve shot name to ID
+ * Prompt user to select download mode
  */
-async function resolveShotNameToId(shotInput: string, queryService: QueryService): Promise<string | null> {
-  await debugToFile(DEBUG_LOG_PATH, "Resolving shot name to ID:", shotInput);
+async function selectDownloadMode(): Promise<"single" | "multiple"> {
+  const mode = await Select.prompt({
+    message: "Download media from:",
+    options: [
+      { name: "A) Single asset version (enter ID)", value: "single" as const },
+      { name: "B) Multiple shots (fuzzy search)", value: "multiple" as const }
+    ]
+  });
+
+  return mode as "single" | "multiple";
+}
+
+/**
+ * Handle single asset version download workflow
+ */
+async function handleSingleAssetVersionDownload(
+  componentService: ComponentService,
+  mediaDownloadService: MediaDownloadService,
+  queryService: QueryService
+): Promise<void> {
+  // Get asset version ID from user
+  const assetVersionId = await promptForAssetVersionId();
+  if (!assetVersionId) return;
+
+  await debugToFile(DEBUG_LOG_PATH, "Asset version ID entered:", assetVersionId);
+
+  // Validate and fetch the asset version
+  console.log(`\n🔍 Looking up asset version: ${assetVersionId}`);
   
+  const assetVersions = await withErrorHandling(
+    async () => {
+      const result = await queryService.queryAssetVersions(`id is "${assetVersionId}"`);
+      await debugToFile(DEBUG_LOG_PATH, "Asset version query result:", result);
+      return result;
+    },
+    {
+      operation: 'fetch asset version',
+      entity: 'AssetVersion',
+      additionalData: { assetVersionId }
+    }
+  );
+
+  if (!assetVersions?.data || assetVersions.data.length === 0) {
+    console.log(`❌ Asset version "${assetVersionId}" not found`);
+    return;
+  }
+
+  const assetVersion = assetVersions.data[0] as AssetVersion;
+  console.log(`\n📦 Found asset version: ${assetVersion.asset?.name || "Unknown"} v${assetVersion.version || "Unknown"}`);
+
+  // Get media preference and download path
+  const mediaPreference = await selectMediaPreference();
+  const downloadPath = await getDownloadPath();
+
+  // Process the asset version
+  await processAssetVersion(
+    assetVersion,
+    componentService,
+    mediaDownloadService,
+    mediaPreference,
+    downloadPath
+  );
+}
+
+/**
+ * Handle multiple shots download workflow with fuzzy search
+ */
+async function handleMultipleShotsDownload(
+  componentService: ComponentService,
+  mediaDownloadService: MediaDownloadService,
+  queryService: QueryService
+): Promise<void> {
+  // Get search pattern from user
+  const searchPattern = await promptForShotSearchPattern();
+  if (!searchPattern) return;
+
+  await debugToFile(DEBUG_LOG_PATH, "Shot search pattern entered:", searchPattern);
+
+  // Fetch all shots and filter client-side for fuzzy matching
+  console.log(`\n🔍 Searching for shots matching: "${searchPattern}"`);
+  
+  const allShots = await withErrorHandling(
+    async () => {
+      const result = await queryService.queryShots();
+      await debugToFile(DEBUG_LOG_PATH, "All shots query result:", result);
+      return result;
+    },
+    {
+      operation: 'fetch shots',
+      entity: 'Shot',
+      additionalData: { searchPattern }
+    }
+  );
+
+  if (!allShots?.data || allShots.data.length === 0) {
+    console.log("❌ No shots found in project");
+    return;
+  }
+
+  // Filter shots using fuzzy matching (case-insensitive)
+  const matchingShots = allShots.data.filter((shot: any) => 
+    shot.name && shot.name.toLowerCase().includes(searchPattern.toLowerCase())
+  );
+
+  await debugToFile(DEBUG_LOG_PATH, "Matching shots found:", matchingShots);
+
+  if (matchingShots.length === 0) {
+    console.log(`❌ No shots found matching pattern: "${searchPattern}"`);
+    return;
+  }
+
+  // Display found shots with their latest versions
+  console.log(`\n📋 Found ${matchingShots.length} matching shot(s):`);
+  
+  const shotsWithVersions = [];
+  for (const shot of matchingShots) {
+    // Get latest asset version for each shot
+    const latestVersion = await getLatestAssetVersionForShot(shot.id, queryService);
+    const versionInfo = latestVersion ? `v${latestVersion.version}` : "No versions";
+    console.log(`   - ${shot.name} (Latest version: ${versionInfo})`);
+    
+    if (latestVersion) {
+      shotsWithVersions.push({
+        shot,
+        latestVersion
+      });
+    }
+  }
+
+  if (shotsWithVersions.length === 0) {
+    console.log("❌ No asset versions found for matching shots");
+    return;
+  }
+
+  // Confirm with user
+  const proceed = await Confirm.prompt({
+    message: `Continue with downloading from these ${shotsWithVersions.length} shot(s)?`,
+    default: true
+  });
+
+  if (!proceed) {
+    console.log("❌ Download cancelled by user");
+    return;
+  }
+
+  // Get media preference and download path
+  const mediaPreference = await selectMediaPreference();
+  const downloadPath = await getDownloadPath();
+
+  // Process each shot's latest version
+  console.log(`\n📥 Starting bulk download from ${shotsWithVersions.length} shot(s)...`);
+  
+  for (let i = 0; i < shotsWithVersions.length; i++) {
+    const { shot, latestVersion } = shotsWithVersions[i];
+    console.log(`\n[${i + 1}/${shotsWithVersions.length}] Processing ${shot.name}...`);
+    
+    await processAssetVersion(
+      latestVersion,
+      componentService,
+      mediaDownloadService,
+      mediaPreference,
+      downloadPath
+    );
+  }
+}
+
+/**
+ * Get latest asset version for a shot
+ */
+async function getLatestAssetVersionForShot(shotId: string, queryService: QueryService): Promise<AssetVersion | null> {
   try {
-    // First try to find by name
-    const shotByNameResponse = await queryService.queryShots(`name is "${shotInput}"`);
-    await debugToFile(DEBUG_LOG_PATH, "Shot query by name result:", shotByNameResponse);
+    // First, try to find any asset versions for this shot (not just "Review" type)
+    const allVersionsResult = await queryService.queryAssetVersions(
+      `asset.parent.id is "${shotId}" order by version desc limit 10`
+    );
     
-    if (shotByNameResponse?.data && shotByNameResponse.data.length > 0) {
-      const shot = shotByNameResponse.data[0] as { id: string; name: string };
-      await debugToFile(DEBUG_LOG_PATH, "Found shot by name:", shot);
-      return shot.id;
+    await debugToFile(DEBUG_LOG_PATH, `All asset versions for shot ${shotId}:`, allVersionsResult);
+    
+    if (allVersionsResult?.data && allVersionsResult.data.length > 0) {
+      // Log what asset types we found
+      const assetTypes = allVersionsResult.data.map((av: any) => av.asset?.type?.name).filter(Boolean);
+      await debugToFile(DEBUG_LOG_PATH, `Asset types found for shot ${shotId}:`, assetTypes);
+      
+      // Try to find "Review" type first
+      const reviewVersion = allVersionsResult.data.find((av: any) => av.asset?.type?.name === "Review");
+      if (reviewVersion) {
+        return reviewVersion as AssetVersion;
+      }
+      
+      // If no Review type, try common media types
+      const mediaTypes = ["Comp", "Render", "Movie", "Video", "Media"];
+      for (const mediaType of mediaTypes) {
+        const mediaVersion = allVersionsResult.data.find((av: any) => av.asset?.type?.name === mediaType);
+        if (mediaVersion) {
+          await debugToFile(DEBUG_LOG_PATH, `Using asset type "${mediaType}" for shot ${shotId}`);
+          return mediaVersion as AssetVersion;
+        }
+      }
+      
+      // If no common media types, return the latest version of any type
+      await debugToFile(DEBUG_LOG_PATH, `Using latest version of any type for shot ${shotId}:`, allVersionsResult.data[0]);
+      return allVersionsResult.data[0] as AssetVersion;
     }
     
-    // If not found by name, try to use the input as an ID directly (in case it's already an ID)
-    const shotByIdResponse = await queryService.queryShots(`id is "${shotInput}"`);
-    await debugToFile(DEBUG_LOG_PATH, "Shot query by ID result:", shotByIdResponse);
-    
-    if (shotByIdResponse?.data && shotByIdResponse.data.length > 0) {
-      const shot = shotByIdResponse.data[0] as { id: string; name: string };
-      await debugToFile(DEBUG_LOG_PATH, "Found shot by ID:", shot);
-      return shot.id;
-    }
-    
-    await debugToFile(DEBUG_LOG_PATH, "Shot not found by name or ID");
     return null;
   } catch (error) {
-    await debugToFile(DEBUG_LOG_PATH, "Error resolving shot:", error);
+    await debugToFile(DEBUG_LOG_PATH, `Error getting latest version for shot ${shotId}:`, error);
     return null;
   }
 }
 
 /**
- * Prompt user for shot ID with validation
+ * Prompt user for asset version ID
  */
-async function promptForShotId(): Promise<string | null> {
-  const shotId = await Input.prompt({
-    message: "Enter the Shot name or ID to download media from:",
+async function promptForAssetVersionId(): Promise<string | null> {
+  const assetVersionId = await Input.prompt({
+    message: "Enter asset version ID:",
     validate: (input: string) => {
       if (!input.trim()) {
-        return "Shot name or ID is required";
+        return "Asset version ID is required";
       }
       return true;
     },
   });
 
-  return shotId.trim() || null;
+  return assetVersionId.trim() || null;
 }
 
 /**
- * Let user select which asset versions to download
+ * Prompt user for shot search pattern
  */
-async function selectAssetVersions(versions: unknown[]): Promise<AssetVersion[]> {
-  // Display available versions
-  console.log("\n📋 Available Asset Versions:");
-  versions.forEach((version: unknown, index: number) => {
-    const versionData = version as AssetVersion;
-    console.log(`   ${index + 1}. ${versionData.asset?.name || "Unknown asset"} v${versionData.version || "Unknown"}`);
-    console.log(`      Asset: ${versionData.asset?.name || "Unknown asset"}`);
-    console.log(`      Shot: ${versionData.asset?.parent?.name || "Unknown shot"}`);
-    console.log(`      Version: ${versionData.version || "Unknown version"}`);
-    console.log(`      Components: ${versionData.components?.length || 0}`);
-    console.log(""); // Empty line for readability
+async function promptForShotSearchPattern(): Promise<string | null> {
+  const searchPattern = await Input.prompt({
+    message: "Enter search pattern (e.g., \"SHOT0\") - Which would find all shots containing \"SHOT0\" in their name:",
+    validate: (input: string) => {
+      if (!input.trim()) {
+        return "Search pattern is required";
+      }
+      return true;
+    },
   });
 
-  const versionIndex = await Select.prompt({
-    message: "Select an asset version to download:",
-    options: versions.map((version: unknown, index: number) => {
-      const versionData = version as AssetVersion;
-      return {
-        name: `${versionData.asset?.name || "Unknown"} v${versionData.version || "Unknown"} (${versionData.asset?.parent?.name || "Unknown shot"})`,
-        value: index
-      };
-    })
-  });
-
-  return [versions[versionIndex] as AssetVersion];
+  return searchPattern.trim() || null;
 }
+
+
 
 /**
  * Get user's media preference
