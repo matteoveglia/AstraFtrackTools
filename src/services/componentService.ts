@@ -1,15 +1,20 @@
 import { SessionService } from "./session.ts";
 import { QueryService } from "./queries.ts";
 import { debug } from "../utils/debug.ts";
+import type { Session } from "@ftrack/api";
 import type {
   Component,
   AssetVersion,
   ComponentType,
   MediaPreference,
   ComponentNotFoundError,
-  DownloadUrlNotFoundError,
   InvalidAssetVersionError,
 } from "../types/index.ts";
+
+// Extend Session type to optionally include getComponentUrl without using `any`
+type SessionWithGetComponentUrl = Session & {
+  getComponentUrl?: (componentId: string) => Promise<string | null>;
+};
 
 /**
  * Service for handling component querying, identification, and URL resolution
@@ -112,10 +117,10 @@ export class ComponentService {
       debug(`Getting download URL for component: ${componentId}`);
 
       // Use the session's getComponentUrl method which handles authentication properly
-      const session = this.sessionService.getSession();
+      const session = this.sessionService.getSession() as SessionWithGetComponentUrl;
       
-      if (typeof (session as any).getComponentUrl === 'function') {
-        const downloadUrl = await (session as any).getComponentUrl(componentId);
+      if (typeof session.getComponentUrl === 'function') {
+        const downloadUrl = await session.getComponentUrl(componentId);
         
         if (downloadUrl) {
           debug(`Got authenticated download URL: ${downloadUrl}`);

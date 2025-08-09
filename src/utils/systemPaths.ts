@@ -13,27 +13,30 @@ export function getDownloadsDirectory(): string {
   
   try {
     switch (os) {
-      case 'windows':
+      case 'windows': {
         const userProfile = Deno.env.get('USERPROFILE');
         if (userProfile) {
           return `${userProfile}\\Downloads`;
         }
         break;
-        
-      case 'darwin': // macOS
+      }
+      
+      case 'darwin': { // macOS
         const homeDir = Deno.env.get('HOME');
         if (homeDir) {
           return `${homeDir}/Downloads`;
         }
         break;
-        
-      case 'linux':
+      }
+      
+      case 'linux': {
         const linuxHome = Deno.env.get('HOME');
         if (linuxHome) {
           return `${linuxHome}/Downloads`;
         }
         break;
-        
+      }
+      
       default:
         debug(`Unknown operating system: ${os}, falling back to current directory`);
         break;
