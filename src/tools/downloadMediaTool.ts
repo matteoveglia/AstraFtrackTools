@@ -11,7 +11,6 @@ import { ComponentService } from "../services/componentService.ts";
 import { MediaDownloadService } from "../services/mediaDownloadService.ts";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
-import { MultiProgressBar } from "@deno-library/progress";
 
 import type { Session } from "@ftrack/api";
 import type { AssetVersion, Component, MediaPreference, Shot } from "../types/mediaDownload.ts";
@@ -358,7 +357,7 @@ async function processShotsWithConcurrency(
       
       try {
         // Simple progress callback that updates our state
-        const progressCallback = async (progress: number, status: string) => {
+        const progressCallback = (progress: number, status: string) => {
           progressState.set(key, { 
             completed: progress >= 100, 
             status: status,
