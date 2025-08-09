@@ -7,6 +7,7 @@ import { inspectVersion } from "./tools/inspectVersion.ts";
 import { inspectShot } from "./tools/inspectShot.ts";
 import { inspectTask } from "./tools/inspectTask.ts";
 import { propagateThumbnails } from "./tools/propagateThumbnails.ts";
+import { downloadMediaTool } from "./tools/downloadMediaTool.ts";
 import { debug } from "./utils/debug.ts";
 import { loadPreferences, savePreferences } from "./utils/preferences.ts";
 import { inspectNote } from "./tools/inspectNote.ts";
@@ -199,6 +200,11 @@ const projectTools: Tool[] = [
     description: "Create, Edit and Delete Lists",
   },
   {
+    name: "📁 Download Media",
+    value: "downloadMedia",
+    description: "Download media files from asset versions",
+  },
+  {
     name: "📁 Propagate Thumbnails",
     value: "propagateThumbnails",
     description:
@@ -295,6 +301,9 @@ async function runTool(
       break;
     case "manageLists":
       await manageLists(session, projectContextService);
+      break;
+    case "downloadMedia":
+      await downloadMediaTool(session, projectContextService, queryService);
       break;
     case "propagateThumbnails":
       await propagateThumbnails(session, projectContextService, queryService);

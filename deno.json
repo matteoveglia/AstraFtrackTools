@@ -1,6 +1,7 @@
 {
   "nodeModulesDir": "auto",
   "imports": {
+    "@deno-library/progress": "jsr:@deno-library/progress@^1.5.1",
     "@ftrack/api": "npm:@ftrack/api@^1.11.2",
     "csv-writer": "npm:csv-writer@^1.6.0",
     "dotenv": "npm:dotenv@^17.2.1",

@@ -1,6 +1,8 @@
 import { SessionService } from "./session.ts";
 import { ProjectContextService } from "./projectContext.ts";
-import { debug } from "../utils/debug.ts";
+import { debug, debugToFile } from "../utils/debug.ts";
+
+const DEBUG_LOG_PATH = "/Users/matteoveglia/Documents/Coding/AstraFtrackTools/downloadMedia_debug.log";
 
 /**
  * Common query builders for Ftrack entities
@@ -15,9 +17,13 @@ export class QueryService {
    * Build and execute a project-scoped query
    */
   async executeProjectScopedQuery(baseQuery: string): Promise<{ data: unknown[] }> {
+    await debugToFile(DEBUG_LOG_PATH, "QueryService.executeProjectScopedQuery - Base query:", baseQuery);
     const scopedQuery = this.projectContext.buildProjectScopedQuery(baseQuery);
+    await debugToFile(DEBUG_LOG_PATH, "QueryService.executeProjectScopedQuery - Scoped query:", scopedQuery);
     debug(`Executing project-scoped query: ${scopedQuery}`);
-    return await this.sessionService.query(scopedQuery);
+    const result = await this.sessionService.query(scopedQuery);
+    await debugToFile(DEBUG_LOG_PATH, "QueryService.executeProjectScopedQuery - Query result:", result);
+    return result;
   }
 
   /**
@@ -37,12 +43,14 @@ export class QueryService {
    * Query asset versions with project scoping
    */
   async queryAssetVersions(additionalFilters: string = ""): Promise<{ data: unknown[] }> {
+    await debugToFile(DEBUG_LOG_PATH, "QueryService.queryAssetVersions - Additional filters:", additionalFilters);
     let baseQuery = 'select id, version, asset.name, asset.parent.name, task.name from AssetVersion';
     
     if (additionalFilters) {
       baseQuery += ` where ${additionalFilters}`;
     }
     
+    await debugToFile(DEBUG_LOG_PATH, "QueryService.queryAssetVersions - Final base query:", baseQuery);
     return await this.executeProjectScopedQuery(baseQuery);
   }
 
