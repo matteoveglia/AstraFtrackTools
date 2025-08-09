@@ -1,5 +1,5 @@
 import { Input, Select, Confirm } from "@cliffy/prompt";
-import process from "node:process";
+// Removed: import process from "node:process";
 
 import { debugToFile } from "../utils/debug.ts";
 import { loadPreferences } from "../utils/preferences.ts";
@@ -11,6 +11,7 @@ import { ComponentService } from "../services/componentService.ts";
 import { MediaDownloadService } from "../services/mediaDownloadService.ts";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
+import { MultiProgressBar } from "@deno-library/progress";
 
 import type { Session } from "@ftrack/api";
 import type { AssetVersion, Component, MediaPreference, Shot } from "../types/mediaDownload.ts";
@@ -319,134 +320,130 @@ async function processShotsWithConcurrency(
   const BATCH_SIZE = 4;
   const totalShots = shotsWithVersions.length;
   const totalBatches = Math.ceil(shotsWithVersions.length / BATCH_SIZE);
-  let processedCount = 0;
   const startTime = Date.now();
 
+  // Simple progress tracking without complex libraries
+  const progressState = new Map<string, { completed: boolean; status: string; elapsed?: number }>();
+
   // Helper function to format elapsed time
-  const formatElapsedTime = (startTime: number): string => {
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const formatElapsedTime = (start: number): string => {
+    const elapsed = Math.floor((Date.now() - start) / 1000);
     const minutes = Math.floor(elapsed / 60);
     const seconds = elapsed % 60;
     return `${minutes}m ${seconds}s`;
   };
 
-  // Simple progress logging
-  console.log(`📥 Starting bulk download from ${totalShots} shot(s) (up to ${BATCH_SIZE} concurrent downloads)...`);
-  console.log(`📊 Total: ${totalShots} shots | Batches: ${totalBatches} | Concurrency: ${BATCH_SIZE}`);
-  console.log('='.repeat(80));
+  const formatTotalElapsed = (): string => {
+    return formatElapsedTime(startTime);
+  };
 
-  // Process shots in batches of 4
+  console.log(`\n📥 Starting bulk download: ${totalShots} file(s)`);
+  console.log(`Batches: ${totalBatches} | Concurrency: ${BATCH_SIZE}`);
+  console.log("─".repeat(80));
+
+  // Process shots in batches of BATCH_SIZE
   for (let i = 0; i < shotsWithVersions.length; i += BATCH_SIZE) {
     const batch = shotsWithVersions.slice(i, i + BATCH_SIZE);
     const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-    
-    console.log(`\n🔄 Batch ${batchNumber}/${totalBatches}: Processing ${batch.length} shots concurrently`);
+
+    console.log(`\nBatch ${batchNumber}/${totalBatches}: Processing ${batch.length} shot(s)...`);
 
     const batchStartTime = Date.now();
     let batchSuccessCount = 0;
     let batchFailureCount = 0;
 
-    // Tracking handled via simple console logging
-
-    // Process batch concurrently
     const batchPromises = batch.map(async ({ shot, latestVersion }) => {
+      const key = `${shot.id}-${latestVersion.id}`;
+      const itemStartTime = Date.now();
+      
       try {
-        // Progress callback to update the display
-        const progressCallback = (progress: number, status: string) => {
-          console.log(`${shot.name} (v${latestVersion.version}) - ${status} ${progress}%`);
+        // Simple progress callback that updates our state
+        const progressCallback = async (progress: number, status: string) => {
+          progressState.set(key, { 
+            completed: progress >= 100, 
+            status: status,
+            elapsed: progress >= 100 ? Date.now() - itemStartTime : undefined
+          });
         };
-        
+
         const result = await processAssetVersionWithProgress(
           latestVersion,
           componentService,
           mediaDownloadService,
           mediaPreference,
           downloadPath,
-          progressCallback
+          (p, s) => { void progressCallback(p, s); }
         );
 
         if (!result.success) {
-          progressCallback(100, `❌ Failed: ${result.reason}`);
+          const elapsed = Math.floor((Date.now() - itemStartTime) / 1000);
+          console.log(`❌ ${shot.name} (v${latestVersion.version}) - Failed: ${result.reason} (${elapsed}s)`);
           
           const components = await componentService.getComponentsForAssetVersion(latestVersion.id);
-          
           return {
             shot,
             version: latestVersion,
             components: components || [],
-            reason: result.reason || 'Unknown error',
-            success: false
+            reason: result.reason || "Unknown error",
+            success: false,
           };
         }
 
-        progressCallback(100, '✅ Completed');
+        const elapsed = Math.floor((Date.now() - itemStartTime) / 1000);
+        console.log(`✅ ${shot.name} (v${latestVersion.version}) - Completed (${elapsed}s)`);
+        return { shot, version: latestVersion, success: true, components: [], reason: "" };
         
-        return { shot, version: latestVersion, success: true, components: [], reason: '' };
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.log(`${shot.name} (v${latestVersion.version}) - ❌ Error: ${errorMessage}`);
-        
-        return {
-          shot,
-          version: latestVersion,
-          components: [],
-          reason: errorMessage,
-          success: false
-        };
+        const elapsed = Math.floor((Date.now() - itemStartTime) / 1000);
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        console.log(`❌ ${shot.name} (v${latestVersion.version}) - Error: ${errorMessage} (${elapsed}s)`);
+        return { shot, version: latestVersion, components: [], reason: errorMessage, success: false };
       }
     });
 
-    // Wait for all downloads in this batch to complete
     const batchResults = await Promise.allSettled(batchPromises);
-    
 
-    
-    // Process results and collect failures
     batchResults.forEach((result, batchIndex) => {
-      const { shot } = batch[batchIndex];
-      
-      if (result.status === 'fulfilled') {
+      const { shot, latestVersion } = batch[batchIndex];
+      if (result.status === "fulfilled") {
         if (!result.value.success) {
           failedDownloads.push({
             shot: result.value.shot,
             version: result.value.version,
             components: result.value.components || [],
-            reason: result.value.reason || 'Unknown error'
+            reason: result.value.reason || "Unknown error",
           });
           batchFailureCount++;
         } else {
           batchSuccessCount++;
         }
       } else {
-        // Handle rejected promises
-        componentService.getComponentsForAssetVersion(batch[batchIndex].latestVersion.id).then(components => {
+        // Promise rejected
+        componentService.getComponentsForAssetVersion(latestVersion.id).then((components) => {
           failedDownloads.push({
             shot,
-            version: batch[batchIndex].latestVersion,
+            version: latestVersion,
             components: components || [],
-            reason: `Promise rejected: ${result.reason || 'Unknown error'}`
+            reason: `Promise rejected: ${result.reason || "Unknown error"}`,
           });
         });
         batchFailureCount++;
       }
     });
-    
-    const batchElapsed = Math.floor((Date.now() - batchStartTime) / 1000);
-    console.log(`✅ Batch ${batchNumber}/${totalBatches} completed: ${batchSuccessCount} successful, ${batchFailureCount} failed | ⏱️ ${batchElapsed}s`);
 
-    processedCount += batch.length;
+    const batchElapsed = Math.floor((Date.now() - batchStartTime) / 1000);
+    console.log(`   ⏱️  Batch ${batchNumber} completed: ${batchSuccessCount} successful, ${batchFailureCount} failed (${batchElapsed}s)`);
   }
 
-
-
   // Final summary
-  const totalElapsed = formatElapsedTime(startTime);
+  const totalElapsed = formatTotalElapsed();
   const successCount = totalShots - failedDownloads.length;
-  console.log(`\n${'='.repeat(80)}`);
-  console.log(`🎉 DOWNLOAD COMPLETED`);
-  console.log(`📊 Results: ${successCount}/${totalShots} successful (${Math.round((successCount/totalShots)*100)}%)`);
-  console.log(`⏱️ Total time: ${totalElapsed}`);
-  console.log(`${'='.repeat(80)}`);
+  
+  console.log("\n" + "═".repeat(80));
+  console.log("📊 DOWNLOAD COMPLETED");
+  console.log(`Results: ${successCount}/${totalShots} successful (${Math.round((successCount / totalShots) * 100)}%)`);
+  console.log(`Total time: ${totalElapsed}`);
+  console.log("═".repeat(80));
 
   return failedDownloads;
 }
