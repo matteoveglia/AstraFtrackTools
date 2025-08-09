@@ -4,7 +4,6 @@ import type {
   DownloadTask,
   DownloadResult,
   DownloadProgress,
-  DownloadConfig,
   Component,
   AssetVersion,
 } from "../types/index.ts";
@@ -32,7 +31,7 @@ export class MediaDownloadService {
    * @param options - Additional fetch options
    * @returns Promise resolving to Response
    */
-  private async makeAuthenticatedRequest(url: string, options: RequestInit = {}): Promise<Response> {
+  private makeAuthenticatedRequest(url: string, options: RequestInit = {}): Promise<Response> {
     // URLs from session.getComponentUrl already include authentication parameters
     // so we can make a direct fetch request without additional headers
     return fetch(url, options);
