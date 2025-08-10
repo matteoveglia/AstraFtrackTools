@@ -17,6 +17,7 @@ import { selectProject, displayProjectContext, type ProjectContext } from "./uti
 import { SessionService } from "./services/session.ts";
 import { ProjectContextService } from "./services/projectContext.ts";
 import { QueryService } from "./services/queries.ts";
+import { deleteMediaTool } from "./tools/deleteMediaTool.ts";
 
 
 // Import Deno types (Deno is a global available at runtime)
@@ -205,6 +206,11 @@ const projectTools: Tool[] = [
     description: "Download media files from asset versions",
   },
   {
+    name: "📁 Delete Media (Preview)",
+    value: "deleteMedia",
+    description: "Preview and delete media (versions or components) - scaffold",
+  },
+  {
     name: "📁 Propagate Thumbnails",
     value: "propagateThumbnails",
     description:
@@ -304,6 +310,9 @@ async function runTool(
       break;
     case "downloadMedia":
       await downloadMediaTool(session, projectContextService, queryService);
+      break;
+    case "deleteMedia":
+      await deleteMediaTool(session, projectContextService, queryService);
       break;
     case "propagateThumbnails":
       await propagateThumbnails(session, projectContextService, queryService);
