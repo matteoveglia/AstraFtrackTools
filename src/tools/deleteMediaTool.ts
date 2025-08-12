@@ -78,7 +78,7 @@ export async function deleteMediaTool(
     console.log(`\nSummary:`);
     console.log(` - Versions: ${summary.versionsDeleted}`);
     console.log(` - Components: ${summary.componentsDeleted}`);
-    console.log(` - MB: ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`);
+    console.log(` - Size (MB): ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`);
 
     // Typed confirmation gating sample (per decisions)
     const needsTyped = versionIds.length > 1;
@@ -229,7 +229,41 @@ export async function deleteMediaTool(
       for (const id of versionIds) choiceMap.set(id, globalChoice);
     }
 
-    const { report, summary } = await deletionService.deleteComponents(choiceMap, { dryRun: true });
+    // Simple loading spinner
+    function createSpinner(message: string) {
+      const encoder = new TextEncoder();
+      const frames = ["|", "/", "-", "\\"];
+      let i = 0;
+      const timer = setInterval(() => {
+        const frame = frames[i = (i + 1) % frames.length];
+        // \r carriage return to update same line
+        Deno.stdout.write(encoder.encode(`\r${message} ${frame}`));
+      }, 120);
+      return {
+        stop(finalMessage?: string) {
+          clearInterval(timer);
+          // Clear the line and optionally print a final message
+          Deno.stdout.write(encoder.encode("\r"));
+          if (finalMessage) {
+            console.log(finalMessage);
+          } else {
+            console.log("");
+          }
+        }
+      };
+    }
+
+    // Spinner during enumeration/generation
+    const spinner = createSpinner("Generating preview...");
+    let report: DryRunReportItem[] = [];
+    let summary: DeletionResultSummary;
+    try {
+      const result = await deletionService.deleteComponents(choiceMap, { dryRun: true });
+      report = result.report;
+      summary = result.summary;
+    } finally {
+      spinner.stop();
+    }
 
     console.log(chalk.green(`\nPreview generated for ${versionIds.length} AssetVersion ID(s).`));
 
@@ -258,7 +292,7 @@ export async function deleteMediaTool(
     console.log(`\nSummary:`);
     console.log(` - Versions: ${summary.versionsDeleted}`);
     console.log(` - Components: ${summary.componentsDeleted}`);
-    console.log(` - MB: ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`);
+    console.log(` - Size (MB): ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`);
 
     // Typed confirmation gating sample (per decisions)
     const needsTyped = versionIds.length > 1;
