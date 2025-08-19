@@ -36,19 +36,96 @@ function createSpinner(message: string) {
 }
 
 /**
- * Delete Media Tool (scaffold)
- * Currently provides a dry-run-only placeholder flow.
+ * Helper function to select asset versions from a list
+ * Returns array of asset version IDs or null if cancelled
+ */
+async function selectFromList(
+  session: Session,
+  projectContextService: ProjectContextService
+): Promise<string[] | null> {
+  const listService = new ListService(session, projectContextService);
+
+  // 1) Fetch available lists
+  console.log(chalk.blue("Fetching available lists..."));
+  const lists = await listService.fetchAssetVersionLists();
+
+  if (lists.length === 0) {
+    console.log(chalk.yellow("No lists found in current project scope."));
+    return null;
+  }
+
+  // 2) Group lists by category (similar to manageLists)
+  const listsByCategory: Record<string, any[]> = {};
+  for (const list of lists) {
+    const categoryName = list.category?.name || "Uncategorized";
+    if (!listsByCategory[categoryName]) listsByCategory[categoryName] = [];
+    listsByCategory[categoryName].push(list);
+  }
+  // Sort lists within each category
+  for (const categoryName of Object.keys(listsByCategory)) {
+    listsByCategory[categoryName].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }
+
+  // 3) Category selection
+  const categoryChoices = Object.keys(listsByCategory).map((name) => ({
+    name: `${name} (${listsByCategory[name].length} lists)`,
+    value: name,
+  }));
+
+  const selectedCategory = await Select.prompt({
+    message: "Select a list category:",
+    options: [...categoryChoices, { name: "❌ Cancel", value: "cancel" }],
+  });
+
+  if (selectedCategory === "cancel") {
+    return null;
+  }
+
+  // 4) List selection within category (no pagination for now)
+  const categoryLists = listsByCategory[selectedCategory];
+  const listChoices = categoryLists.map((list) => ({
+    name: `${list.name} (${list.project?.name || "No Project"})`,
+    value: list.id,
+  }));
+
+  const selectedListId = await Select.prompt({
+    message: `Select a list from "${selectedCategory}":`,
+    options: [...listChoices, { name: "❌ Cancel", value: "cancel" }],
+  });
+
+  if (selectedListId === "cancel") {
+    return null;
+  }
+
+  // 5) Resolve asset version IDs from list
+  console.log(chalk.blue("Extracting asset versions from list..."));
+  const versionIds = await listService.getAssetVersionIdsFromList(selectedListId);
+
+  if (versionIds.length === 0) {
+    console.log(chalk.yellow("No asset versions found in the selected list."));
+    return null;
+  }
+
+  console.log(chalk.green(`Found ${versionIds.length} asset versions in the list.`));
+  return versionIds;
+}
+
+/**
+ * Delete Media Tool
+ * Provides dry-run previews, CSV exports, and actual deletion for asset versions and components.
+ * Supports multiple input modes: manual IDs, age-based, filter-based, and list-based selection.
+ * Includes progressive safety measures: preview → export → confirm → execute.
  */
 export async function deleteMediaTool(
   session: Session,
   projectContextService: ProjectContextService,
   queryService: QueryService,
 ): Promise<void> {
-  debug("Starting Delete Media Tool (scaffold)");
+  debug("Starting Delete Media Tool");
 
   // Enforce project-scoped only
-  console.log(chalk.blue("\nDelete Media Tool (Preview Mode)"));
-  console.log(chalk.yellow("This is a scaffolded preview. No deletions will be performed."));
+  console.log(chalk.blue("\nDelete Media Tool"));
+  console.log(chalk.yellow("All modes provide a final confirmation and preview before any deletion occurs."));
 
   const mode = (await Select.prompt({
     message: "Select deletion mode",
@@ -57,23 +134,43 @@ export async function deleteMediaTool(
       { name: "Delete components only (original/encoded)", value: "components" },
       { name: "Age-based cleanup", value: "age" },
       { name: "Filter-based deletion", value: "filter" },
-      { name: "From list (choose asset versions from list)", value: "lists" },
     ],
-  })) as DeleteMode | "lists";
+  })) as DeleteMode;
 
   const sessionService = new SessionService(session);
   const deletionService = new DeletionService(session, sessionService, queryService);
 
   if (mode === "versions") {
-    const idsRaw = await Input.prompt({
-      message: "Enter AssetVersion IDs to preview delete (comma-separated)",
-      default: "",
+    // Choose input method
+    const inputMethod = await Select.prompt({
+      message: "How would you like to specify asset versions?",
+      options: [
+        { name: "Enter AssetVersion IDs directly", value: "ids" },
+        { name: "Select-all from list", value: "list" },
+      ],
     });
-    const versionIds = idsRaw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(Boolean);
 
-    if (versionIds.length === 0) {
-      console.log(chalk.yellow("No IDs provided. Aborting."));
-      return;
+    let versionIds: string[] = [];
+
+    if (inputMethod === "ids") {
+      const idsRaw = await Input.prompt({
+        message: "Enter AssetVersion IDs to preview delete (comma-separated)",
+        default: "",
+      });
+      versionIds = idsRaw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(Boolean);
+
+      if (versionIds.length === 0) {
+        console.log(chalk.yellow("No IDs provided. Aborting."));
+        return;
+      }
+    } else {
+      // Select from list
+      const listVersionIds = await selectFromList(session, projectContextService);
+      if (!listVersionIds) {
+        console.log(chalk.yellow("Operation cancelled."));
+        return;
+      }
+      versionIds = listVersionIds;
     }
 
     const { report, summary } = await deletionService.deleteAssetVersions(versionIds, { dryRun: true });
@@ -114,7 +211,7 @@ export async function deleteMediaTool(
       const confirmText = await Input.prompt({ message: `Type "DELETE NOW" to confirm preview completion`, default: "" });
       proceed = confirmText.trim() === "DELETE NOW";
     } else {
-      proceed = await Confirm.prompt({ message: "Proceed to actual deletion flow (not implemented)?", default: false });
+      proceed = await Confirm.prompt({ message: "⚠️  FINAL CONFIRMATION: Delete these asset versions permanently?", default: false });
     }
 
     if (!proceed) {
@@ -122,7 +219,26 @@ export async function deleteMediaTool(
       return;
     }
 
-    console.log(chalk.yellow("Note: Actual deletion not implemented in scaffold."));
+    if (proceed) {
+        console.log(chalk.red("🗑️  Executing deletion..."));
+        
+        // Perform actual deletion
+        const deletionResult = await deletionService.deleteAssetVersions(versionIds, { dryRun: false });
+        
+        // Show final results
+         console.log(chalk.green(`\n✅ Deletion completed!`));
+         console.log(`Successfully processed: ${deletionResult.summary.versionsDeleted} versions`);
+         console.log(`Total size freed: ${DeletionService.formatBytes(deletionResult.summary.bytesDeleted)}`);
+         
+         if (deletionResult.summary.failures.length > 0) {
+           console.log(chalk.yellow(`\n⚠️  ${deletionResult.summary.failures.length} failures occurred:`));
+           deletionResult.summary.failures.forEach(failure => {
+             console.log(chalk.red(`  - ${failure.id}: ${failure.reason}`));
+           });
+         }
+      } else {
+        console.log(chalk.yellow("Deletion cancelled by user."));
+      }
     return;
   }
 
@@ -133,6 +249,7 @@ export async function deleteMediaTool(
       options: [
         { name: "Enter AssetVersion IDs directly", value: "ids" },
         { name: "Search by shot name(s)", value: "shots" },
+        { name: "Select-all from list", value: "list" },
       ],
     });
 
@@ -144,7 +261,7 @@ export async function deleteMediaTool(
         default: "",
       });
       versionIds = idsRaw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(Boolean);
-    } else {
+    } else if (inputMethod === "shots") {
       // Search by shot names
       const shotNamesRaw = await Input.prompt({
         message: "Enter shot name(s) to find asset versions (comma-separated). Tip: use wildcard * (e.g., SHOT02*)",
@@ -203,6 +320,14 @@ export async function deleteMediaTool(
       } else {
         versionIds = selectedVersions.filter(id => id !== "all");
       }
+    } else {
+      // Select from list
+      const listVersionIds = await selectFromList(session, projectContextService);
+      if (!listVersionIds) {
+        console.log(chalk.yellow("Operation cancelled."));
+        return;
+      }
+      versionIds = listVersionIds;
     }
 
     if (versionIds.length === 0) {
@@ -305,7 +430,7 @@ export async function deleteMediaTool(
       const confirmText = await Input.prompt({ message: `Type "DELETE NOW" to confirm preview completion`, default: "" });
       proceed = confirmText.trim() === "DELETE NOW";
     } else {
-      proceed = await Confirm.prompt({ message: "Proceed to actual deletion flow (not implemented)?", default: false });
+      proceed = await Confirm.prompt({ message: "⚠️  FINAL CONFIRMATION: Delete these components permanently?", default: false });
     }
 
     if (!proceed) {
@@ -313,7 +438,27 @@ export async function deleteMediaTool(
       return;
     }
 
-    console.log(chalk.yellow("Note: Actual deletion not implemented in scaffold."));
+    if (proceed) {
+        console.log(chalk.red("🗑️  Executing component deletion..."));
+        
+        // Perform actual deletion
+        const deletionResult = await deletionService.deleteComponents(choiceMap, { dryRun: false });
+        
+        // Show final results
+        console.log(chalk.green(`\n✅ Component deletion completed!`));
+        console.log(`Successfully processed: ${deletionResult.summary.versionsDeleted} versions`);
+        console.log(`Components deleted: ${deletionResult.summary.componentsDeleted}`);
+        console.log(`Total size freed: ${DeletionService.formatBytes(deletionResult.summary.bytesDeleted)}`);
+        
+        if (deletionResult.summary.failures.length > 0) {
+          console.log(chalk.yellow(`\n⚠️  ${deletionResult.summary.failures.length} failures occurred:`));
+          deletionResult.summary.failures.forEach(failure => {
+            console.log(chalk.red(`  - ${failure.id}: ${failure.reason}`));
+          });
+        }
+      } else {
+        console.log(chalk.yellow("Deletion cancelled by user."));
+      }
     return;
   }
 
@@ -475,7 +620,7 @@ export async function deleteMediaTool(
       const confirmText = await Input.prompt({ message: `Type "DELETE NOW" to confirm preview completion`, default: "" });
       proceed = confirmText.trim() === "DELETE NOW";
     } else {
-      proceed = await Confirm.prompt({ message: "Proceed to actual deletion flow (not implemented)?", default: false });
+      proceed = await Confirm.prompt({ message: "⚠️  FINAL CONFIRMATION: Delete these asset versions permanently?", default: false });
     }
 
     if (!proceed) {
@@ -483,164 +628,30 @@ export async function deleteMediaTool(
       return;
     }
 
-    console.log(chalk.yellow("Note: Actual deletion not implemented in scaffold."));
+    if (proceed) {
+      console.log(chalk.red("🗑️  Executing deletion..."));
+      
+      // Perform actual deletion
+      const deletionResult = await deletionService.deleteAssetVersions(versionIds, { dryRun: false });
+      
+      // Show final results
+      console.log(chalk.green(`\n✅ Deletion completed!`));
+      console.log(`Successfully processed: ${deletionResult.summary.versionsDeleted} versions`);
+      console.log(`Total size freed: ${DeletionService.formatBytes(deletionResult.summary.bytesDeleted)}`);
+      
+      if (deletionResult.summary.failures.length > 0) {
+        console.log(chalk.yellow(`\n⚠️  ${deletionResult.summary.failures.length} failures occurred:`));
+        deletionResult.summary.failures.forEach(failure => {
+          console.log(chalk.red(`  - ${failure.id}: ${failure.reason}`));
+        });
+      }
+    } else {
+      console.log(chalk.yellow("Deletion cancelled by user."));
+    }
     return;
   }
 
-  if (mode === "lists") {
-    const listService = new ListService(session, projectContextService);
 
-    // 1) Fetch available lists
-    console.log(chalk.blue("Fetching available lists..."));
-    const lists = await listService.fetchAssetVersionLists();
-
-    if (lists.length === 0) {
-      console.log(chalk.yellow("No lists found in current project scope."));
-      return;
-    }
-
-    // 2) Group lists by category (similar to manageLists)
-    const listsByCategory: Record<string, any[]> = {};
-    for (const list of lists) {
-      const categoryName = list.category?.name || "Uncategorized";
-      if (!listsByCategory[categoryName]) listsByCategory[categoryName] = [];
-      listsByCategory[categoryName].push(list);
-    }
-    // Sort lists within each category
-    for (const categoryName of Object.keys(listsByCategory)) {
-      listsByCategory[categoryName].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-    }
-
-    // 3) Category selection
-    const categoryChoices = Object.keys(listsByCategory).map((name) => ({
-      name: `${name} (${listsByCategory[name].length} lists)`,
-      value: name,
-    }));
-
-    const selectedCategory = await Select.prompt({
-      message: "Select a list category:",
-      options: [...categoryChoices, { name: "❌ Cancel", value: "cancel" }],
-    });
-
-    if (selectedCategory === "cancel") {
-      console.log(chalk.yellow("Operation cancelled."));
-      return;
-    }
-
-    // 4) List selection within category (no pagination for now)
-    const categoryLists = listsByCategory[selectedCategory];
-    const listChoices = categoryLists.map((list) => ({
-      name: `${list.name} (${list.project?.name || "No Project"})`,
-      value: list.id,
-    }));
-
-    const selectedListId = await Select.prompt({
-      message: `Select a list from "${selectedCategory}":`,
-      options: [...listChoices, { name: "❌ Cancel", value: "cancel" }],
-    });
-
-    if (selectedListId === "cancel") {
-      console.log(chalk.yellow("Operation cancelled."));
-      return;
-    }
-
-    // 5) Resolve asset version IDs from list
-    console.log(chalk.blue("Extracting asset versions from list..."));
-    const versionIds = await listService.getAssetVersionIdsFromList(selectedListId);
-
-    if (versionIds.length === 0) {
-      console.log(chalk.yellow("No asset versions found in the selected list."));
-      return;
-    }
-
-    console.log(chalk.green(`Found ${versionIds.length} asset versions in the list.`));
-
-    // 6) Choose deletion scope
-    const deletionType = await Select.prompt({
-      message: "What should be deleted from the asset versions in the list?",
-      options: [
-        { name: "Delete whole asset versions", value: "versions" },
-        { name: "Delete components only", value: "components" },
-      ],
-    });
-
-    let componentChoice: ComponentDeletionChoice = "all";
-    if (deletionType === "components") {
-      componentChoice = await Select.prompt({
-        message: "Which components to delete?",
-        options: [
-          { name: "All components", value: "all" },
-          { name: "Only original", value: "original_only" },
-          { name: "Only encoded", value: "encoded_only" },
-        ],
-      }) as ComponentDeletionChoice;
-    }
-
-    // 7) Generate preview
-    const spinner = createSpinner("Generating preview...");
-    let report: DryRunReportItem[] = [];
-    let summary: DeletionResultSummary;
-    try {
-      if (deletionType === "versions") {
-        const result = await deletionService.deleteAssetVersions(versionIds, { dryRun: true });
-        report = result.report;
-        summary = result.summary;
-      } else {
-        const choiceMap = new Map<string, ComponentDeletionChoice>();
-        for (const id of versionIds) choiceMap.set(id, componentChoice);
-        const result = await deletionService.deleteComponents(choiceMap, { dryRun: true });
-        report = result.report;
-        summary = result.summary;
-      }
-    } finally {
-      spinner.stop();
-    }
-
-    console.log(chalk.green(`\nList-based preview generated for ${versionIds.length} AssetVersion(s).`));
-
-    // 8) Export and summary
-    const downloadsDir = getDownloadsDirectory();
-    const canWrite = await verifyDirectoryAccess(downloadsDir);
-    if (!canWrite) {
-      console.log(chalk.red(`❌ Cannot write to Downloads directory at: ${downloadsDir}`));
-    } else {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const mergedPath = `${downloadsDir}/delete-media-list-preview-${timestamp}.csv`;
-      try {
-        const mergedCsv = formatMergedCSV(summary, report);
-        await Deno.writeTextFile(mergedPath, mergedCsv);
-        console.log(chalk.green("\n📝 Dry-run export created:"));
-        console.log(` - Merged: ${mergedPath}`);
-      } catch (err) {
-        debug(`Failed to write dry-run export: ${err}`);
-        console.log(chalk.red("Failed to write dry-run export file."));
-      }
-    }
-
-    // Display quick console summary
-    console.log(`\nSummary:`);
-    console.log(` - Versions: ${summary.versionsDeleted}`);
-    console.log(` - Components: ${summary.componentsDeleted}`);
-    console.log(` - Size (MB): ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`);
-
-    // Confirmation gating
-    const needsTyped = versionIds.length > 1;
-    let proceed = false;
-    if (needsTyped) {
-      const confirmText = await Input.prompt({ message: `Type "DELETE NOW" to confirm preview completion`, default: "" });
-      proceed = confirmText.trim() === "DELETE NOW";
-    } else {
-      proceed = await Confirm.prompt({ message: "Proceed to actual deletion flow (not implemented)?", default: false });
-    }
-
-    if (!proceed) {
-      console.log(chalk.yellow("Operation cancelled."));
-      return;
-    }
-
-    console.log(chalk.yellow("Note: Actual deletion not implemented in scaffold."));
-    return;
-  }
 
   if (mode === "filter") {
     // Choose which filters to apply
@@ -827,7 +838,7 @@ export async function deleteMediaTool(
       const confirmText = await Input.prompt({ message: `Type "DELETE NOW" to confirm preview completion`, default: "" });
       proceed = confirmText.trim() === "DELETE NOW";
     } else {
-      proceed = await Confirm.prompt({ message: "Proceed to actual deletion flow (not implemented)?", default: false });
+      proceed = await Confirm.prompt({ message: "⚠️  FINAL CONFIRMATION: Delete these asset versions permanently?", default: false });
     }
 
     if (!proceed) {
@@ -835,7 +846,26 @@ export async function deleteMediaTool(
       return;
     }
 
-    console.log(chalk.yellow("Note: Actual deletion not implemented in scaffold."));
+    if (proceed) {
+      console.log(chalk.red("🗑️  Executing deletion..."));
+      
+      // Perform actual deletion
+      const deletionResult = await deletionService.deleteAssetVersions(versionIds, { dryRun: false });
+      
+      // Show final results
+      console.log(chalk.green(`\n✅ Deletion completed!`));
+      console.log(`Successfully processed: ${deletionResult.summary.versionsDeleted} versions`);
+      console.log(`Total size freed: ${DeletionService.formatBytes(deletionResult.summary.bytesDeleted)}`);
+      
+      if (deletionResult.summary.failures.length > 0) {
+        console.log(chalk.yellow(`\n⚠️  ${deletionResult.summary.failures.length} failures occurred:`));
+        deletionResult.summary.failures.forEach(failure => {
+          console.log(chalk.red(`  - ${failure.id}: ${failure.reason}`));
+        });
+      }
+    } else {
+      console.log(chalk.yellow("Deletion cancelled by user."));
+    }
     return;
   }
 

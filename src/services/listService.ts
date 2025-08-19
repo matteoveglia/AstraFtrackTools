@@ -1,4 +1,4 @@
-/** Minimal list helpers scaffold for Delete Media Tool */
+/** List helpers for Delete Media Tool */
 import type { Session } from "@ftrack/api";
 import type { ProjectContextService } from "./projectContext.ts";
 

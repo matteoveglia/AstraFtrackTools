@@ -91,8 +91,7 @@ export class DeletionService {
 
     // Perform actual deletion if not dry-run
     if (!opts.dryRun) {
-      // TODO: Implement actual session.call deletion in batches
-      debug("Actual deletion not implemented yet");
+      await this.executeVersionDeletions(versionIds, failures);
     }
 
     const summary: DeletionResultSummary = {
@@ -164,8 +163,7 @@ export class DeletionService {
 
     // Perform actual deletion if not dry-run
     if (!opts.dryRun) {
-      // TODO: Implement actual session.call component deletion in batches
-      debug("Actual component deletion not implemented yet");
+      await this.executeComponentDeletions(versionIdToComponentChoice, failures);
     }
 
     const summary: DeletionResultSummary = {
@@ -267,6 +265,113 @@ export class DeletionService {
     }
     
     return [...new Set(identifiers)]; // Remove duplicates
+  }
+
+  /**
+   * Execute actual version deletions in batches
+   */
+  private async executeVersionDeletions(
+    versionIds: string[],
+    failures: Array<{ id: string; reason: string }>
+  ): Promise<void> {
+    debug(`Executing deletion of ${versionIds.length} asset versions`);
+    
+    const batchSize = 10; // Process in batches to avoid overwhelming the API
+    
+    for (let i = 0; i < versionIds.length; i += batchSize) {
+      const batch = versionIds.slice(i, i + batchSize);
+      
+      for (const versionId of batch) {
+        try {
+          // Check if this version already failed during dry-run analysis
+          const alreadyFailed = failures.some(f => f.id === versionId);
+          if (alreadyFailed) {
+            debug(`Skipping ${versionId} - already marked as failed`);
+            continue;
+          }
+          
+          debug(`Deleting asset version: ${versionId}`);
+          await this.session.call([{
+            action: "delete",
+            entity_type: "AssetVersion",
+            entity_key: versionId
+          }]);
+          
+        } catch (error) {
+          debug(`Failed to delete version ${versionId}: ${error}`);
+          failures.push({ 
+            id: versionId, 
+            reason: error instanceof Error ? error.message : "Deletion failed" 
+          });
+        }
+      }
+      
+      // Small delay between batches to be gentle on the API
+      if (i + batchSize < versionIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+  }
+
+  /**
+   * Execute actual component deletions in batches
+   */
+  private async executeComponentDeletions(
+    versionIdToComponentChoice: Map<string, ComponentDeletionChoice>,
+    failures: Array<{ id: string; reason: string }>
+  ): Promise<void> {
+    debug(`Executing component deletion for ${versionIdToComponentChoice.size} versions`);
+    
+    for (const [versionId, choice] of versionIdToComponentChoice.entries()) {
+      try {
+        // Check if this version already failed during dry-run analysis
+        const alreadyFailed = failures.some(f => f.id === versionId);
+        if (alreadyFailed) {
+          debug(`Skipping ${versionId} - already marked as failed`);
+          continue;
+        }
+        
+        // Fetch version details to get thumbnail_id
+        const versionDetails = await this.fetchVersionDetails(versionId);
+        if (!versionDetails) {
+          failures.push({ id: versionId, reason: "Version not found during execution" });
+          continue;
+        }
+        
+        // Get all components for this version
+        const allComponents = await this.componentService.getComponentsForAssetVersion(versionId);
+        
+        // Filter components based on user choice and exclude thumbnails
+        const componentsToDelete = this.filterComponentsByChoice(allComponents, choice, versionDetails.thumbnail_id);
+        
+        // Delete components in batches
+        const batchSize = 5;
+        for (let i = 0; i < componentsToDelete.length; i += batchSize) {
+          const batch = componentsToDelete.slice(i, i + batchSize);
+          
+          const deleteActions = batch.map(component => ({
+            action: "delete",
+            entity_type: "Component",
+            entity_key: component.id
+          }));
+          
+          debug(`Deleting ${batch.length} components from version ${versionId}`);
+          await this.session.call(deleteActions);
+          
+          // Small delay between batches
+          if (i + batchSize < componentsToDelete.length) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+        }
+        
+      } catch (error) {
+        debug(`Failed to delete components for version ${versionId}: ${error}`);
+        failures.push({ 
+          id: versionId, 
+          reason: error instanceof Error ? error.message : "Component deletion failed" 
+        });
+      }
+    }
   }
 
   /**

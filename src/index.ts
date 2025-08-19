@@ -206,9 +206,9 @@ const projectTools: Tool[] = [
     description: "Download media files from asset versions",
   },
   {
-    name: "📁 Delete Media (Preview)",
+    name: "📁 Delete Media",
     value: "deleteMedia",
-    description: "Preview and delete media (versions or components) - scaffold",
+    description: "Delete media (versions or components) with preview and confirmation",
   },
   {
     name: "📁 Propagate Thumbnails",
