@@ -18,7 +18,11 @@ export class SessionService {
       return response;
     } catch (error) {
       debug(`Query failed: ${error}`);
-      throw new Error(`Query execution failed: ${error instanceof Error ? error.message : error}`);
+      throw new Error(
+        `Query execution failed: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
     }
   }
 

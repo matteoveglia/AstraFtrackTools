@@ -9,11 +9,11 @@ export async function inspectVersion(
   session: Session,
   projectContextService: ProjectContextService,
   queryService: QueryService,
-  versionId?: string
+  versionId?: string,
 ): Promise<void> {
   const projectContext = projectContextService.getContext();
-  const contextDisplay = projectContext.isGlobal 
-    ? "all projects" 
+  const contextDisplay = projectContext.isGlobal
+    ? "all projects"
     : `project "${projectContext.project?.name}"`;
 
   try {
@@ -37,10 +37,10 @@ export async function inspectVersion(
     const versionResponse = await withErrorHandling(
       () => queryService.queryAssetVersions(`id is "${versionId}"`),
       {
-        operation: 'fetch version details',
-        entity: 'AssetVersion',
-        additionalData: { versionId, contextDisplay }
-      }
+        operation: "fetch version details",
+        entity: "AssetVersion",
+        additionalData: { versionId, contextDisplay },
+      },
     );
 
     if (!versionResponse?.data || versionResponse.data.length === 0) {
@@ -67,13 +67,22 @@ export async function inspectVersion(
     console.log(`   Version: ${versionData.version || "Unknown"}`);
     console.log(`   Status: ${versionData.status?.name || "No status"}`);
     console.log(`   Task: ${versionData.task?.name || "No task"}`);
-    console.log(`   User: ${versionData.user?.first_name} ${versionData.user?.last_name} (${versionData.user?.username})`);
-    console.log(`   Date: ${versionData.date ? new Date(versionData.date).toLocaleString() : "Unknown"}`);
+    console.log(
+      `   User: ${versionData.user?.first_name} ${versionData.user?.last_name} (${versionData.user?.username})`,
+    );
+    console.log(
+      `   Date: ${
+        versionData.date
+          ? new Date(versionData.date).toLocaleString()
+          : "Unknown"
+      }`,
+    );
     console.log(`   Comment: ${versionData.comment || "No comment"}`);
 
     // Fetch custom attribute links using direct session query (custom attributes don't need project scoping)
     const customAttributeLinksResponse = await withErrorHandling(
-      () => session.query(`
+      () =>
+        session.query(`
         select 
           id,
           value,
@@ -84,26 +93,36 @@ export async function inspectVersion(
         where entity_id="${versionId}"
       `),
       {
-        operation: 'fetch version custom attributes',
-        entity: 'CustomAttributeValue',
-        additionalData: { versionId, contextDisplay }
-      }
+        operation: "fetch version custom attributes",
+        entity: "CustomAttributeValue",
+        additionalData: { versionId, contextDisplay },
+      },
     );
 
-    if (customAttributeLinksResponse?.data && customAttributeLinksResponse.data.length > 0) {
+    if (
+      customAttributeLinksResponse?.data &&
+      customAttributeLinksResponse.data.length > 0
+    ) {
       console.log("\n🏷️ Custom Attributes:");
       customAttributeLinksResponse.data.forEach((attr: unknown) => {
-        const attrData = attr as { 
-          id: string; 
-          value?: string; 
-          configuration?: { 
-            key?: string; 
-            label?: string; 
-            type?: { name?: string } 
-          } 
+        const attrData = attr as {
+          id: string;
+          value?: string;
+          configuration?: {
+            key?: string;
+            label?: string;
+            type?: { name?: string };
+          };
         };
-        console.log(`   • ${attrData.configuration?.label || attrData.configuration?.key || "Unknown"}: ${attrData.value || "No value"}`);
-        console.log(`     Type: ${attrData.configuration?.type?.name || "Unknown type"}`);
+        console.log(
+          `   • ${
+            attrData.configuration?.label || attrData.configuration?.key ||
+            "Unknown"
+          }: ${attrData.value || "No value"}`,
+        );
+        console.log(
+          `     Type: ${attrData.configuration?.type?.name || "Unknown type"}`,
+        );
         console.log(`     ID: ${attrData.id}`);
         console.log("");
       });
@@ -113,7 +132,8 @@ export async function inspectVersion(
 
     // Fetch linked notes using direct session query (notes don't need project scoping)
     const linkedNotesResponse = await withErrorHandling(
-      () => session.query(`
+      () =>
+        session.query(`
         select 
           id,
           content,
@@ -128,10 +148,10 @@ export async function inspectVersion(
         limit 10
       `),
       {
-        operation: 'fetch version notes',
-        entity: 'Note',
-        additionalData: { versionId, contextDisplay }
-      }
+        operation: "fetch version notes",
+        entity: "Note",
+        additionalData: { versionId, contextDisplay },
+      },
     );
 
     if (linkedNotesResponse?.data && linkedNotesResponse.data.length > 0) {
@@ -144,9 +164,13 @@ export async function inspectVersion(
           date?: string;
           category?: { name?: string };
         };
-        const user = noteData.user ? `${noteData.user.first_name} ${noteData.user.last_name} (${noteData.user.username})` : "Unknown user";
-        const date = noteData.date ? new Date(noteData.date).toLocaleString() : "Unknown date";
-        
+        const user = noteData.user
+          ? `${noteData.user.first_name} ${noteData.user.last_name} (${noteData.user.username})`
+          : "Unknown user";
+        const date = noteData.date
+          ? new Date(noteData.date).toLocaleString()
+          : "Unknown date";
+
         console.log(`   • ${noteData.category?.name || "General"} - ${user}`);
         console.log(`     Date: ${date}`);
         console.log(`     Content: ${noteData.content || "No content"}`);
@@ -160,9 +184,9 @@ export async function inspectVersion(
     debug(`Version inspection completed for ID: ${versionId}`);
   } catch (error) {
     handleError(error, {
-      operation: 'inspect version',
-      entity: 'AssetVersion',
-      additionalData: { versionId, contextDisplay }
+      operation: "inspect version",
+      entity: "AssetVersion",
+      additionalData: { versionId, contextDisplay },
     });
     throw error;
   }

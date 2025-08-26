@@ -1,6 +1,6 @@
 import { Session } from "@ftrack/api";
 
-import { Select, Input, Confirm, Secret } from "@cliffy/prompt";
+import { Confirm, Input, Secret, Select } from "@cliffy/prompt";
 import { updateLatestVersionsSent } from "./tools/updateLatestVersions.ts";
 import { exportSchema } from "./tools/exportSchema.ts";
 import { inspectVersion } from "./tools/inspectVersion.ts";
@@ -13,11 +13,15 @@ import { loadPreferences, savePreferences } from "./utils/preferences.ts";
 import { inspectNote } from "./tools/inspectNote.ts";
 import { manageLists } from "./tools/manageLists.ts";
 import { initCliffyPrompt } from "./utils/cliffyInit.ts";
-import { selectProject, displayProjectContext, type ProjectContext } from "./utils/projectSelection.ts";
+import {
+  displayProjectContext,
+  type ProjectContext,
+  selectProject,
+} from "./utils/projectSelection.ts";
 import { SessionService } from "./services/session.ts";
 import { ProjectContextService } from "./services/projectContext.ts";
 import { QueryService } from "./services/queries.ts";
-
+import { deleteMediaTool } from "./tools/deleteMediaTool.ts";
 
 // Import Deno types (Deno is a global available at runtime)
 declare const Deno: {
@@ -35,13 +39,17 @@ interface ServerError extends Error {
 }
 
 // Initialize ftrack session and project context
-async function initSession(): Promise<{ session: Session; projectContext: ProjectContext }> {
+async function initSession(): Promise<
+  { session: Session; projectContext: ProjectContext }
+> {
   debug("Loading preferences");
   const prefs = await loadPreferences();
 
   if (!prefs.FTRACK_SERVER || !prefs.FTRACK_API_USER || !prefs.FTRACK_API_KEY) {
     console.log("\n🚀 Welcome to Astra Ftrack Tools!");
-    console.log("First-time setup required. Let's configure your Ftrack credentials.\n");
+    console.log(
+      "First-time setup required. Let's configure your Ftrack credentials.\n",
+    );
     const configured = await setAndTestCredentials();
     if (!configured) {
       throw new Error("Setup cancelled - credentials are required to proceed");
@@ -59,31 +67,35 @@ async function initSession(): Promise<{ session: Session; projectContext: Projec
     );
     await session.initializing;
     debug("Successfully connected to ftrack");
-    
+
     // Initialize services
     sessionService = new SessionService(session);
-    
+
     // Project selection
     console.log("\n📁 Project Selection");
     console.log("===================");
     const projectContext = await selectProject(session);
-    
+
     projectContextService = new ProjectContextService(projectContext);
     queryService = new QueryService(sessionService, projectContextService);
-    
-    console.log(`\n✅ Ready! Operating in: ${displayProjectContext(projectContext)}\n`);
-    
+
+    console.log(
+      `\n✅ Ready! Operating in: ${displayProjectContext(projectContext)}\n`,
+    );
+
     return { session, projectContext };
   } catch (error: unknown) {
     if (error instanceof Error) {
       const serverError = error as ServerError;
-      if (serverError?.errorCode === 'api_credentials_invalid') {
-        console.error('\nError: Invalid API credentials. Please update your credentials.');
+      if (serverError?.errorCode === "api_credentials_invalid") {
+        console.error(
+          "\nError: Invalid API credentials. Please update your credentials.",
+        );
         const updated = await setAndTestCredentials();
         if (updated) {
           return initSession(); // Retry with new credentials
         }
-        throw new Error('Unable to proceed with invalid credentials');
+        throw new Error("Unable to proceed with invalid credentials");
       }
       throw error;
     } else {
@@ -121,8 +133,8 @@ async function testFtrackCredentials(
   } catch (error: unknown) {
     if (error instanceof Error) {
       const serverError = error as ServerError;
-      if (serverError?.errorCode === 'api_credentials_invalid') {
-        console.error('\nError: The supplied API key is not valid.');
+      if (serverError?.errorCode === "api_credentials_invalid") {
+        console.error("\nError: The supplied API key is not valid.");
         return false;
       }
       console.error("Failed to authenticate with Ftrack:", error);
@@ -137,7 +149,7 @@ async function testFtrackCredentials(
 async function setAndTestCredentials(): Promise<boolean> {
   while (true) { // Loop until valid credentials or user quits
     const prefs = await loadPreferences();
-    
+
     const server = await Input.prompt({
       message: "Ftrack Server URL:",
       default: prefs.FTRACK_SERVER,
@@ -149,8 +161,8 @@ async function setAndTestCredentials(): Promise<boolean> {
     });
 
     const key = await Secret.prompt({
-       message: "API Key:",
-     });
+      message: "API Key:",
+    });
 
     const shouldTest = await Confirm.prompt({
       message: "Would you like to test these credentials?",
@@ -205,10 +217,15 @@ const projectTools: Tool[] = [
     description: "Download media files from asset versions",
   },
   {
+    name: "📁 Delete Media",
+    value: "deleteMedia",
+    description:
+      "Delete media (versions or components) with preview and confirmation",
+  },
+  {
     name: "📁 Propagate Thumbnails",
     value: "propagateThumbnails",
-    description:
-      "Update shots with thumbnails from their latest versions",
+    description: "Update shots with thumbnails from their latest versions",
   },
 ];
 
@@ -269,21 +286,31 @@ async function runTool(
   );
   switch (tool) {
     case "updateVersions":
-      await updateLatestVersionsSent(session, projectContextService, queryService);
+      await updateLatestVersionsSent(
+        session,
+        projectContextService,
+        queryService,
+      );
       break;
     case "exportSchema":
       if (subOption) {
-        const result = await exportSchema(session, projectContextService, subOption);
-        if (typeof result === 'object' && result !== null) {
+        const result = await exportSchema(
+          session,
+          projectContextService,
+          subOption,
+        );
+        if (typeof result === "object" && result !== null) {
           // Use type assertion to handle the result correctly
           const exportResult = result as { filename: string };
-          if ('filename' in exportResult) {
-            console.log(`Schema exported successfully to ${exportResult.filename}`);
+          if ("filename" in exportResult) {
+            console.log(
+              `Schema exported successfully to ${exportResult.filename}`,
+            );
           } else {
-            console.log('Schema export completed');
+            console.log("Schema export completed");
           }
         } else {
-          console.log('Schema export completed');
+          console.log("Schema export completed");
         }
       }
       break;
@@ -305,6 +332,9 @@ async function runTool(
     case "downloadMedia":
       await downloadMediaTool(session, projectContextService, queryService);
       break;
+    case "deleteMedia":
+      await deleteMediaTool(session, projectContextService, queryService);
+      break;
     case "propagateThumbnails":
       await propagateThumbnails(session, projectContextService, queryService);
       break;
@@ -325,7 +355,7 @@ async function runTool(
 // Helper function to find a tool by value
 function findTool(toolValue: string): Tool | undefined {
   const allTools = [...projectTools, ...globalTools, ...settingsTools];
-  return allTools.find(t => t.value === toolValue);
+  return allTools.find((t) => t.value === toolValue);
 }
 
 // Main function
@@ -345,42 +375,60 @@ async function main() {
     while (running) {
       // Build menu options with proper grouping
       const menuOptions = [];
-      
+
       // Add project tools section first
       if (projectTools.length > 0) {
-        menuOptions.push({ name: "─── Project Based ───", value: "separator-project", disabled: true });
+        menuOptions.push({
+          name: "─── Project Based ───",
+          value: "separator-project",
+          disabled: true,
+        });
         menuOptions.push(...projectTools.map((tool) => ({
           name: `${tool.name} - ${tool.description}`,
           value: tool.value,
         })));
       }
-      
+
       // Add global tools section
       if (globalTools.length > 0) {
-        menuOptions.push({ name: "─── All Projects - tools ignore project selection ───", value: "separator-global", disabled: true });
+        menuOptions.push({
+          name: "─── All Projects - tools ignore project selection ───",
+          value: "separator-global",
+          disabled: true,
+        });
         menuOptions.push(...globalTools.map((tool) => ({
           name: `${tool.name} - ${tool.description}`,
           value: tool.value,
         })));
       }
-      
+
       // Add settings section
       if (settingsTools.length > 0) {
-        menuOptions.push({ name: "─── Settings ───", value: "separator-settings", disabled: true });
+        menuOptions.push({
+          name: "─── Settings ───",
+          value: "separator-settings",
+          disabled: true,
+        });
         menuOptions.push(...settingsTools.map((tool) => ({
           name: `${tool.name} - ${tool.description}`,
           value: tool.value,
         })));
       }
-      
+
       // Add utility options
-      menuOptions.push({ name: "─── Utilities ───", value: "separator-utils", disabled: true });
+      menuOptions.push({
+        name: "─── Utilities ───",
+        value: "separator-utils",
+        disabled: true,
+      });
       menuOptions.push({ name: "Change Project", value: "change-project" });
       menuOptions.push({ name: "Exit", value: "exit" });
 
       const tool = await Select.prompt({
-        message: currentProjectContext 
-          ? `[${displayProjectContext(currentProjectContext)}] Select a tool to run:`
+        message: currentProjectContext
+          ? `[${
+            displayProjectContext(currentProjectContext)
+          }] Select a tool to run:`
           : "Select a tool to run:",
         options: menuOptions,
       });
@@ -397,7 +445,11 @@ async function main() {
         currentProjectContext = await selectProject(session);
         // Update the project context service with the new context
         projectContextService.setContext(currentProjectContext);
-        console.log(`\n✅ Ready! Operating in: ${displayProjectContext(currentProjectContext)}\n`);
+        console.log(
+          `\n✅ Ready! Operating in: ${
+            displayProjectContext(currentProjectContext)
+          }\n`,
+        );
         continue;
       }
 

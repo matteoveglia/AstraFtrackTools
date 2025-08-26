@@ -33,13 +33,13 @@ const mockLinksData = [{
 const mockProjectContextService = {
   getContext: () => ({
     isGlobal: true,
-    project: null
-  })
+    project: null,
+  }),
 } as unknown as ProjectContextService;
 
 const mockQueryService = {
   queryAssetVersions: () => Promise.resolve({ data: [mockVersionData] }),
-  queryVersionLinks: () => Promise.resolve({ data: mockLinksData })
+  queryVersionLinks: () => Promise.resolve({ data: mockLinksData }),
 } as unknown as QueryService;
 
 // Mock session factory
@@ -64,11 +64,15 @@ Deno.test("inspectVersion - should query version details with provided versionId
   const mockSession = createMockSession([mockVersionData, mockLinksData]);
 
   try {
-    await inspectVersion(mockSession, mockProjectContextService, mockQueryService, "version-1");
+    await inspectVersion(
+      mockSession,
+      mockProjectContextService,
+      mockQueryService,
+      "version-1",
+    );
 
     // Verify that console.log was called (indicating the function ran successfully)
     assertEquals(logCalled, true, "Should have logged output");
-
   } finally {
     console.log = originalConsoleLog;
   }
@@ -84,11 +88,15 @@ Deno.test("inspectVersion - should handle empty results gracefully", async () =>
   const mockSession = createMockSession([[], []]);
 
   try {
-    await inspectVersion(mockSession, mockProjectContextService, mockQueryService, "version-1");
+    await inspectVersion(
+      mockSession,
+      mockProjectContextService,
+      mockQueryService,
+      "version-1",
+    );
 
     // Verify that console.log was called (indicating the function ran successfully)
     assertEquals(logCalled, true, "Should have logged output");
-
   } finally {
     console.log = originalConsoleLog;
   }

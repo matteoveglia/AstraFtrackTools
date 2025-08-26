@@ -2,7 +2,7 @@
  * Enhanced error handling utility for better error reporting and debugging
  */
 
-import { debug } from './debug.ts';
+import { debug } from "./debug.ts";
 
 export interface FtrackError extends Error {
   errorCode?: string;
@@ -23,12 +23,12 @@ export interface ErrorContext {
 export function handleError(
   error: unknown,
   context: ErrorContext,
-  options: { rethrow?: boolean; logStackTrace?: boolean } = {}
+  options: { rethrow?: boolean; logStackTrace?: boolean } = {},
 ): void {
   const { operation, entity, entityId, additionalData } = context;
   const { rethrow = true, logStackTrace = true } = options;
 
-  let errorMessage = 'Unknown error occurred';
+  let errorMessage = "Unknown error occurred";
   let errorCode: string | undefined;
   let statusCode: number | undefined;
   let details: unknown;
@@ -39,7 +39,7 @@ export function handleError(
     errorCode = ftrackError.errorCode;
     statusCode = ftrackError.statusCode;
     details = ftrackError.details;
-  } else if (typeof error === 'string') {
+  } else if (typeof error === "string") {
     errorMessage = error;
   } else {
     errorMessage = String(error);
@@ -48,9 +48,9 @@ export function handleError(
   // Create context string
   const contextParts = [operation];
   if (entity) {
-    contextParts.push(`${entity}${entityId ? ` (${entityId})` : ''}`);
+    contextParts.push(`${entity}${entityId ? ` (${entityId})` : ""}`);
   }
-  const contextString = contextParts.join(' - ');
+  const contextString = contextParts.join(" - ");
 
   // Log error with context
   console.error(`❌ Error during ${contextString}: ${errorMessage}`);
@@ -87,7 +87,7 @@ export function handleError(
 export async function withErrorHandling<T>(
   operation: () => Promise<T>,
   context: ErrorContext,
-  options?: { rethrow?: boolean; logStackTrace?: boolean }
+  options?: { rethrow?: boolean; logStackTrace?: boolean },
 ): Promise<T | null> {
   try {
     return await operation();
@@ -103,28 +103,38 @@ export async function withErrorHandling<T>(
 export function handleFtrackError(error: unknown, context: string): never {
   if (error instanceof Error) {
     const ftrackError = error as FtrackError;
-    
+
     switch (ftrackError.errorCode) {
-      case 'api_credentials_invalid':
-        console.error(`❌ ${context}: Invalid API credentials. Please update your credentials.`);
+      case "api_credentials_invalid":
+        console.error(
+          `❌ ${context}: Invalid API credentials. Please update your credentials.`,
+        );
         break;
-      case 'permission_denied':
-        console.error(`❌ ${context}: Permission denied. You may not have the required permissions for this operation.`);
+      case "permission_denied":
+        console.error(
+          `❌ ${context}: Permission denied. You may not have the required permissions for this operation.`,
+        );
         break;
-      case 'entity_not_found':
-        console.error(`❌ ${context}: Entity not found. The requested resource may have been deleted or you may not have access.`);
+      case "entity_not_found":
+        console.error(
+          `❌ ${context}: Entity not found. The requested resource may have been deleted or you may not have access.`,
+        );
         break;
-      case 'validation_error':
-        console.error(`❌ ${context}: Validation error. The data provided is invalid.`);
+      case "validation_error":
+        console.error(
+          `❌ ${context}: Validation error. The data provided is invalid.`,
+        );
         if (ftrackError.details) {
-          console.error(`   Details: ${JSON.stringify(ftrackError.details, null, 2)}`);
+          console.error(
+            `   Details: ${JSON.stringify(ftrackError.details, null, 2)}`,
+          );
         }
         break;
       default:
         console.error(`❌ ${context}: ${ftrackError.message}`);
         break;
     }
-    
+
     debug(`Full error details: ${JSON.stringify(ftrackError, null, 2)}`);
     if (ftrackError.stack) {
       debug(`Stack trace: ${ftrackError.stack}`);
@@ -132,7 +142,7 @@ export function handleFtrackError(error: unknown, context: string): never {
   } else {
     console.error(`❌ ${context}: ${String(error)}`);
   }
-  
+
   throw error;
 }
 
@@ -142,7 +152,7 @@ export function handleFtrackError(error: unknown, context: string): never {
 export function validateRequired<T>(
   value: T | null | undefined,
   paramName: string,
-  context: string
+  context: string,
 ): asserts value is T {
   if (value === null || value === undefined) {
     throw new Error(`${context}: Missing required parameter '${paramName}'`);
@@ -160,36 +170,41 @@ export async function retryWithBackoff<T>(
     maxDelay?: number;
     backoffFactor?: number;
     context?: string;
-  } = {}
+  } = {},
 ): Promise<T> {
   const {
     maxRetries = 3,
     initialDelay = 1000,
     maxDelay = 10000,
     backoffFactor = 2,
-    context = 'operation'
+    context = "operation",
   } = options;
 
   let lastError: Error;
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await operation();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      
+
       if (attempt === maxRetries) {
         console.error(`❌ ${context} failed after ${maxRetries} attempts`);
         break;
       }
-      
-      const delay = Math.min(initialDelay * Math.pow(backoffFactor, attempt - 1), maxDelay);
-      console.warn(`⚠️ ${context} failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
+
+      const delay = Math.min(
+        initialDelay * Math.pow(backoffFactor, attempt - 1),
+        maxDelay,
+      );
+      console.warn(
+        `⚠️ ${context} failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`,
+      );
       debug(`Retry error: ${lastError.message}`);
-      
-      await new Promise(resolve => setTimeout(resolve, delay));
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
-  
+
   throw lastError!;
 }

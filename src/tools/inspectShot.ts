@@ -9,11 +9,11 @@ export async function inspectShot(
   _session: Session,
   projectContextService: ProjectContextService,
   queryService: QueryService,
-  shotId?: string
+  shotId?: string,
 ): Promise<void> {
   const projectContext = projectContextService.getContext();
-  const contextDisplay = projectContext.isGlobal 
-    ? "all projects" 
+  const contextDisplay = projectContext.isGlobal
+    ? "all projects"
     : `project "${projectContext.project?.name}"`;
 
   try {
@@ -37,10 +37,10 @@ export async function inspectShot(
     const shotResponse = await withErrorHandling(
       () => queryService.queryShots(`id is "${shotId}"`),
       {
-        operation: 'fetch shot details',
-        entity: 'Shot',
-        additionalData: { shotId, contextDisplay }
-      }
+        operation: "fetch shot details",
+        entity: "Shot",
+        additionalData: { shotId, contextDisplay },
+      },
     );
 
     if (!shotResponse?.data || shotResponse.data.length === 0) {
@@ -67,10 +67,10 @@ export async function inspectShot(
     const tasksResponse = await withErrorHandling(
       () => queryService.queryTasks(`parent_id is "${shotId}"`),
       {
-        operation: 'fetch shot tasks',
-        entity: 'Task',
-        additionalData: { shotId, contextDisplay }
-      }
+        operation: "fetch shot tasks",
+        entity: "Task",
+        additionalData: { shotId, contextDisplay },
+      },
     );
 
     if (tasksResponse?.data && tasksResponse.data.length > 0) {
@@ -82,7 +82,9 @@ export async function inspectShot(
           type?: { name?: string };
           status?: { name?: string };
         };
-        console.log(`   • ${taskData.name} (${taskData.type?.name || "Unknown type"})`);
+        console.log(
+          `   • ${taskData.name} (${taskData.type?.name || "Unknown type"})`,
+        );
         console.log(`     Status: ${taskData.status?.name || "No status"}`);
         console.log(`     ID: ${taskData.id}`);
       });
@@ -94,10 +96,10 @@ export async function inspectShot(
     const versionsResponse = await withErrorHandling(
       () => queryService.queryAssetVersions(`task.parent_id is "${shotId}"`),
       {
-        operation: 'fetch shot versions',
-        entity: 'AssetVersion',
-        additionalData: { shotId, contextDisplay }
-      }
+        operation: "fetch shot versions",
+        entity: "AssetVersion",
+        additionalData: { shotId, contextDisplay },
+      },
     );
 
     if (versionsResponse?.data && versionsResponse.data.length > 0) {
@@ -109,9 +111,15 @@ export async function inspectShot(
           asset?: { name?: string; parent?: { name?: string } };
           task?: { name?: string };
         };
-        console.log(`   • ${versionData.asset?.name || "Unknown asset"} v${versionData.version || "Unknown"}`);
+        console.log(
+          `   • ${versionData.asset?.name || "Unknown asset"} v${
+            versionData.version || "Unknown"
+          }`,
+        );
         console.log(`     Task: ${versionData.task?.name || "Unknown task"}`);
-        console.log(`     Parent: ${versionData.asset?.parent?.name || "Unknown parent"}`);
+        console.log(
+          `     Parent: ${versionData.asset?.parent?.name || "Unknown parent"}`,
+        );
         console.log(`     ID: ${versionData.id}`);
         console.log("");
       });
@@ -122,9 +130,9 @@ export async function inspectShot(
     debug(`Shot inspection completed for ID: ${shotId}`);
   } catch (error) {
     handleError(error, {
-      operation: 'inspect shot',
-      entity: 'Shot',
-      additionalData: { shotId, contextDisplay }
+      operation: "inspect shot",
+      entity: "Shot",
+      additionalData: { shotId, contextDisplay },
     });
     throw error;
   }
