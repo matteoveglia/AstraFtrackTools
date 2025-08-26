@@ -346,16 +346,16 @@ export async function deleteMediaTool(
   );
   console.log(
     chalk.blue(
-      "📊 Progress Timeline: Select Mode → Preview (safe) → Export CSV (safe) → Confirm → Execute",
+      "📊 Progress Timeline: Select Mode → Preview (Safe) → Export CSV (Safe) → Confirm → Execute",
     ),
   );
 
   const mode = (await Select.prompt({
-    message: "Select deletion mode (safe - no deletion yet)",
+    message: "Select deletion mode (Safe - no deletion yet)",
     options: [
       { name: "Delete whole asset versions", value: "versions" },
       {
-        name: "Delete components only (original/encoded) (safe)",
+        name: "Delete components only (original/encoded) (Safe)",
         value: "components",
       },
       { name: "Age-based cleanup", value: "age" },
@@ -901,14 +901,14 @@ export async function deleteMediaTool(
       message: "What should be deleted from matched asset versions?",
       options: [
         { name: "Delete whole asset versions", value: "versions" },
-        { name: "Delete components only (safe)", value: "components" },
+        { name: "Delete components only (Safe)", value: "components" },
       ],
     });
 
     let componentChoice: ComponentDeletionChoice = "all";
     if (deletionType === "components") {
       componentChoice = await Select.prompt({
-        message: "Which components to delete? (safe)",
+        message: "Which components to delete? (Safe)",
         options: [
           { name: "All components", value: "all" },
           { name: "Only original", value: "original_only" },
@@ -1231,14 +1231,14 @@ export async function deleteMediaTool(
       message: "What should be deleted from matched asset versions?",
       options: [
         { name: "Delete whole asset versions", value: "versions" },
-        { name: "Delete components only (safe)", value: "components" },
+        { name: "Delete components only (Safe)", value: "components" },
       ],
     });
 
     let componentChoice: ComponentDeletionChoice = "all";
     if (deletionType === "components") {
       componentChoice = await Select.prompt({
-        message: "Which components to delete? (safe)",
+        message: "Which components to delete? (Safe)",
         options: [
           { name: "All components", value: "all" },
           { name: "Only original", value: "original_only" },
