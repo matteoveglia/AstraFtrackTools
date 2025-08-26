@@ -48,13 +48,13 @@ const mockVersionsData = [{
 const mockProjectContextService = {
   getContext: () => ({
     isGlobal: true,
-    project: null
-  })
+    project: null,
+  }),
 } as unknown as ProjectContextService;
 
 const mockQueryService = {
   queryTasks: () => Promise.resolve({ data: [mockTaskData] }),
-  queryAssetVersions: () => Promise.resolve({ data: mockVersionsData })
+  queryAssetVersions: () => Promise.resolve({ data: mockVersionsData }),
 } as unknown as QueryService;
 
 // Mock session factory
@@ -76,14 +76,22 @@ Deno.test("inspectTask - should process task details with provided taskId", asyn
     logCalled = true;
   };
 
-  const mockSession = createMockSession([mockTaskData, mockTimelogsData, mockVersionsData]);
+  const mockSession = createMockSession([
+    mockTaskData,
+    mockTimelogsData,
+    mockVersionsData,
+  ]);
 
   try {
-    await inspectTask(mockSession, mockProjectContextService, mockQueryService, "task-1");
+    await inspectTask(
+      mockSession,
+      mockProjectContextService,
+      mockQueryService,
+      "task-1",
+    );
 
     // Verify that console.log was called (indicating the function ran successfully)
     assertEquals(logCalled, true, "Should have logged output");
-
   } finally {
     console.log = originalConsoleLog;
   }
@@ -93,7 +101,7 @@ Deno.test("inspectTask - should handle errors properly", async () => {
   const originalConsoleError = console.error;
   const errorCalls: string[] = [];
   console.error = (...args: unknown[]) => {
-    errorCalls.push(args.join(' '));
+    errorCalls.push(args.join(" "));
   };
 
   const mockSession = {
@@ -103,16 +111,22 @@ Deno.test("inspectTask - should handle errors properly", async () => {
   try {
     await assertRejects(
       async () => {
-        await inspectTask(mockSession, mockProjectContextService, mockQueryService, "task-1");
+        await inspectTask(
+          mockSession,
+          mockProjectContextService,
+          mockQueryService,
+          "task-1",
+        );
       },
       Error,
-      "API Error"
+      "API Error",
     );
 
     // Verify error was logged (should be for time logs, not task details)
-    const errorLog = errorCalls.find(log => log.includes("Error during fetch task time logs"));
+    const errorLog = errorCalls.find((log) =>
+      log.includes("Error during fetch task time logs")
+    );
     assertEquals(errorLog !== undefined, true, "Should log error message");
-
   } finally {
     console.error = originalConsoleError;
   }

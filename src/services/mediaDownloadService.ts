@@ -1,11 +1,11 @@
 import { debug } from "../utils/debug.ts";
 import type { Session } from "@ftrack/api";
 import type {
-  DownloadTask,
-  DownloadResult,
-  DownloadProgress,
-  Component,
   AssetVersion,
+  Component,
+  DownloadProgress,
+  DownloadResult,
+  DownloadTask,
 } from "../types/index.ts";
 
 /**
@@ -17,7 +17,11 @@ export class MediaDownloadService {
   private session?: Session;
   private authHeaders: Record<string, string> = {};
 
-  constructor(maxConcurrentDownloads: number = 4, session?: Session, authHeaders?: Record<string, string>) {
+  constructor(
+    maxConcurrentDownloads: number = 4,
+    session?: Session,
+    authHeaders?: Record<string, string>,
+  ) {
     this.maxConcurrentDownloads = maxConcurrentDownloads;
     this.session = session;
     if (authHeaders) {
@@ -31,7 +35,10 @@ export class MediaDownloadService {
    * @param options - Additional fetch options
    * @returns Promise resolving to Response
    */
-  private makeAuthenticatedRequest(url: string, options: RequestInit = {}): Promise<Response> {
+  private makeAuthenticatedRequest(
+    url: string,
+    options: RequestInit = {},
+  ): Promise<Response> {
     // URLs from session.getComponentUrl already include authentication parameters
     // so we can make a direct fetch request without additional headers
     return fetch(url, options);
@@ -44,7 +51,11 @@ export class MediaDownloadService {
    * @param filename - The filename to save as
    * @returns Promise resolving when download completes
    */
-  async downloadFile(url: string, outputPath: string, filename: string): Promise<void> {
+  async downloadFile(
+    url: string,
+    outputPath: string,
+    filename: string,
+  ): Promise<void> {
     const taskId = `${outputPath}/${filename}`;
     const fullPath = `${outputPath}/${filename}`;
 
@@ -58,20 +69,20 @@ export class MediaDownloadService {
         bytesDownloaded: 0,
         totalBytes: 0,
         percentage: 0,
-        status: 'pending',
+        status: "pending",
       });
 
       // Update status to downloading
-      this.updateProgress(taskId, { status: 'downloading' });
+      this.updateProgress(taskId, { status: "downloading" });
 
       // Fetch the file with session-based authentication
       const response = await this.makeAuthenticatedRequest(url);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const contentLength = response.headers.get('content-length');
+      const contentLength = response.headers.get("content-length");
       const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
 
       this.updateProgress(taskId, { totalBytes });
@@ -81,25 +92,27 @@ export class MediaDownloadService {
 
       // Create write stream
       const file = await Deno.open(fullPath, { create: true, write: true });
-      
+
       try {
         const reader = response.body?.getReader();
         if (!reader) {
-          throw new Error('Failed to get response reader');
+          throw new Error("Failed to get response reader");
         }
 
         let bytesDownloaded = 0;
 
         while (true) {
           const { done, value } = await reader.read();
-          
+
           if (done) break;
 
           await file.write(value);
           bytesDownloaded += value.length;
 
           // Update progress
-          const percentage = totalBytes > 0 ? (bytesDownloaded / totalBytes) * 100 : 0;
+          const percentage = totalBytes > 0
+            ? (bytesDownloaded / totalBytes) * 100
+            : 0;
           this.updateProgress(taskId, {
             bytesDownloaded,
             percentage,
@@ -107,19 +120,31 @@ export class MediaDownloadService {
 
           // Log progress for large files (every 10MB)
           if (bytesDownloaded % (10 * 1024 * 1024) === 0 || done) {
-            debug(`Download progress for ${filename}: ${this.formatBytes(bytesDownloaded)}${totalBytes > 0 ? ` / ${this.formatBytes(totalBytes)} (${percentage.toFixed(1)}%)` : ''}`);
+            debug(
+              `Download progress for ${filename}: ${
+                this.formatBytes(bytesDownloaded)
+              }${
+                totalBytes > 0
+                  ? ` / ${this.formatBytes(totalBytes)} (${
+                    percentage.toFixed(1)
+                  }%)`
+                  : ""
+              }`,
+            );
           }
         }
 
-        this.updateProgress(taskId, { status: 'completed' });
-        debug(`Download completed: ${filename} (${this.formatBytes(bytesDownloaded)})`);
-
+        this.updateProgress(taskId, { status: "completed" });
+        debug(
+          `Download completed: ${filename} (${
+            this.formatBytes(bytesDownloaded)
+          })`,
+        );
       } finally {
         file.close();
       }
-
     } catch (error) {
-      this.updateProgress(taskId, { status: 'failed' });
+      this.updateProgress(taskId, { status: "failed" });
       debug(`Download failed for ${filename}: ${error}`);
       throw error;
     } finally {
@@ -134,7 +159,9 @@ export class MediaDownloadService {
    * @returns Promise resolving to array of download results
    */
   async downloadFiles(downloads: DownloadTask[]): Promise<DownloadResult[]> {
-    debug(`Starting batch download of ${downloads.length} files with max ${this.maxConcurrentDownloads} concurrent downloads`);
+    debug(
+      `Starting batch download of ${downloads.length} files with max ${this.maxConcurrentDownloads} concurrent downloads`,
+    );
 
     const results: DownloadResult[] = [];
     const chunks = this.chunkArray(downloads, this.maxConcurrentDownloads);
@@ -143,12 +170,14 @@ export class MediaDownloadService {
       const chunkPromises = chunk.map(async (task): Promise<DownloadResult> => {
         try {
           await this.downloadFile(task.url, task.outputPath, task.filename);
-          
+
           return {
             task,
             success: true,
             filePath: `${task.outputPath}/${task.filename}`,
-            fileSize: await this.getFileSize(`${task.outputPath}/${task.filename}`),
+            fileSize: await this.getFileSize(
+              `${task.outputPath}/${task.filename}`,
+            ),
           };
         } catch (error) {
           return {
@@ -165,10 +194,12 @@ export class MediaDownloadService {
       debug(`Completed chunk of ${chunk.length} downloads`);
     }
 
-    const successful = results.filter(r => r.success).length;
-    const failed = results.filter(r => !r.success).length;
-    
-    debug(`Batch download completed: ${successful} successful, ${failed} failed`);
+    const successful = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
+
+    debug(
+      `Batch download completed: ${successful} successful, ${failed} failed`,
+    );
 
     return results;
   }
@@ -181,7 +212,10 @@ export class MediaDownloadService {
   async prepareDownloadDirectory(basePath: string): Promise<string> {
     try {
       // Create timestamped folder name
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(
+        0,
+        19,
+      );
       const downloadDir = `${basePath}/${timestamp}_ftrackMediaDownload`;
 
       debug(`Preparing download directory: ${downloadDir}`);
@@ -191,15 +225,18 @@ export class MediaDownloadService {
 
       // Verify directory is writable
       const testFile = `${downloadDir}/.write_test`;
-      await Deno.writeTextFile(testFile, 'test');
+      await Deno.writeTextFile(testFile, "test");
       await Deno.remove(testFile);
 
       debug(`Download directory ready: ${downloadDir}`);
       return downloadDir;
-
     } catch (error) {
       debug(`Failed to prepare download directory: ${error}`);
-      throw new Error(`Failed to create download directory: ${error instanceof Error ? error.message : error}`);
+      throw new Error(
+        `Failed to create download directory: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
     }
   }
 
@@ -209,22 +246,25 @@ export class MediaDownloadService {
    * @param assetVersion - The asset version
    * @returns Safe filename string
    */
-  generateSafeFilename(component: Component, assetVersion: AssetVersion): string {
+  generateSafeFilename(
+    component: Component,
+    assetVersion: AssetVersion,
+  ): string {
     const shotName = assetVersion.asset.parent.name;
     const assetName = assetVersion.asset.name;
-    const version = `v${assetVersion.version.toString().padStart(3, '0')}`;
+    const version = `v${assetVersion.version.toString().padStart(3, "0")}`;
     const componentType = this.getComponentTypeForFilename(component);
-    
+
     // Get file extension from component, handling cases where file_type already includes a dot
-    const cleanFileType = component.file_type?.replace(/^\.+/, '') || '';
-    const extension = cleanFileType ? `.${cleanFileType}` : '';
-    
+    const cleanFileType = component.file_type?.replace(/^\.+/, "") || "";
+    const extension = cleanFileType ? `.${cleanFileType}` : "";
+
     // Create base filename
     const baseFilename = `${shotName}_${assetName}_${version}_${componentType}`;
-    
+
     // Sanitize filename (remove/replace unsafe characters)
-    const safeFilename = baseFilename.replace(/[<>:"/\\|?*]/g, '_');
-    
+    const safeFilename = baseFilename.replace(/[<>:"/\\|?*]/g, "_");
+
     return `${safeFilename}${extension}`;
   }
 
@@ -255,7 +295,10 @@ export class MediaDownloadService {
    * @param taskId - The task ID
    * @param updates - Progress updates to apply
    */
-  private updateProgress(taskId: string, updates: Partial<DownloadProgress>): void {
+  private updateProgress(
+    taskId: string,
+    updates: Partial<DownloadProgress>,
+  ): void {
     const current = this.activeDownloads.get(taskId);
     if (current) {
       this.activeDownloads.set(taskId, { ...current, ...updates });
@@ -282,13 +325,13 @@ export class MediaDownloadService {
    * @returns Formatted string
    */
   private formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    
+    if (bytes === 0) return "0 Bytes";
+
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   }
 
   /**
@@ -298,15 +341,15 @@ export class MediaDownloadService {
    */
   private getComponentTypeForFilename(component: Component): string {
     const name = component.name.toLowerCase();
-    
+
     if (name === "ftrackreview-mp4-1080") {
-      return 'encoded_1080p';
+      return "encoded_1080p";
     }
-    
+
     if (name === "ftrackreview-mp4") {
-      return 'encoded_720p';
+      return "encoded_720p";
     }
-    
-    return 'original';
+
+    return "original";
   }
 }

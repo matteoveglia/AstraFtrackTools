@@ -56,14 +56,14 @@ function createMockSession(queryResponses: unknown[]) {
 const mockProjectContextService = {
   getContext: () => ({
     isGlobal: true,
-    project: null
-  })
+    project: null,
+  }),
 } as unknown as ProjectContextService;
 
 const mockQueryService = {
   queryShots: () => Promise.resolve({ data: [mockShotData] }),
   queryTasks: () => Promise.resolve({ data: mockTasksData }),
-  queryAssetVersions: () => Promise.resolve({ data: mockVersionsData })
+  queryAssetVersions: () => Promise.resolve({ data: mockVersionsData }),
 } as unknown as QueryService;
 
 Deno.test("inspectShot - should process shot details with provided shotId", async () => {
@@ -73,14 +73,22 @@ Deno.test("inspectShot - should process shot details with provided shotId", asyn
     logCalled = true;
   };
 
-  const mockSession = createMockSession([mockShotData, mockTasksData, mockVersionsData]);
+  const mockSession = createMockSession([
+    mockShotData,
+    mockTasksData,
+    mockVersionsData,
+  ]);
 
   try {
-    await inspectShot(mockSession, mockProjectContextService, mockQueryService, "shot-1");
+    await inspectShot(
+      mockSession,
+      mockProjectContextService,
+      mockQueryService,
+      "shot-1",
+    );
 
     // Verify that console.log was called (indicating the function ran successfully)
     assertEquals(logCalled, true, "Should have logged output");
-
   } finally {
     console.log = originalConsoleLog;
   }
@@ -90,7 +98,7 @@ Deno.test("inspectShot - should handle errors properly", async () => {
   const originalConsoleError = console.error;
   const errorCalls: string[] = [];
   console.error = (...args: unknown[]) => {
-    errorCalls.push(args.join(' '));
+    errorCalls.push(args.join(" "));
   };
 
   const mockSession = {
@@ -100,22 +108,28 @@ Deno.test("inspectShot - should handle errors properly", async () => {
   const mockFailingQueryService = {
     queryShots: () => Promise.reject(new Error("API Error")),
     queryTasks: () => Promise.reject(new Error("API Error")),
-    queryAssetVersions: () => Promise.reject(new Error("API Error"))
+    queryAssetVersions: () => Promise.reject(new Error("API Error")),
   } as unknown as QueryService;
 
   try {
     await assertRejects(
       async () => {
-        await inspectShot(mockSession, mockProjectContextService, mockFailingQueryService, "shot-1");
+        await inspectShot(
+          mockSession,
+          mockProjectContextService,
+          mockFailingQueryService,
+          "shot-1",
+        );
       },
       Error,
-      "API Error"
+      "API Error",
     );
 
     // Verify error was logged
-    const errorLog = errorCalls.find(log => log.includes("Error during fetch shot details"));
+    const errorLog = errorCalls.find((log) =>
+      log.includes("Error during fetch shot details")
+    );
     assertEquals(errorLog !== undefined, true, "Should log error message");
-
   } finally {
     console.error = originalConsoleError;
   }

@@ -9,11 +9,11 @@ export async function inspectNote(
   session: Session,
   projectContextService: ProjectContextService,
   _queryService: QueryService,
-  noteId?: string
+  noteId?: string,
 ): Promise<void> {
   const projectContext = projectContextService.getContext();
-  const contextDisplay = projectContext.isGlobal 
-    ? "all projects" 
+  const contextDisplay = projectContext.isGlobal
+    ? "all projects"
     : `project "${projectContext.project?.name}"`;
 
   try {
@@ -35,7 +35,8 @@ export async function inspectNote(
 
     // Fetch note details using direct session query (notes don't need project scoping)
     const noteResponse = await withErrorHandling(
-      () => session.query(`
+      () =>
+        session.query(`
         select 
           id, 
           content, 
@@ -51,10 +52,10 @@ export async function inspectNote(
         where id="${noteId}"
       `),
       {
-        operation: 'fetch note details',
-        entity: 'Note',
-        additionalData: { noteId, contextDisplay }
-      }
+        operation: "fetch note details",
+        entity: "Note",
+        additionalData: { noteId, contextDisplay },
+      },
     );
 
     if (!noteResponse?.data || noteResponse.data.length === 0) {
@@ -68,14 +69,29 @@ export async function inspectNote(
     console.log("\n📝 Note Details:");
     console.log(`   ID: ${note.id}`);
     console.log(`   Content: ${note.content || "No content"}`);
-    console.log(`   Author: ${note.author?.first_name} ${note.author?.last_name} (${note.author?.username})`);
-    console.log(`   Date: ${note.date ? new Date(note.date).toLocaleString() : "Unknown"}`);
-    console.log(`   Category: ${note.category?.name || "No category"} ${note.category?.color ? `(${note.category.color})` : ""}`);
-    console.log(`   Parent: ${note.parent?.name || "No parent"} ${note.parent?.id ? `(${note.parent.id})` : ""}`);
+    console.log(
+      `   Author: ${note.author?.first_name} ${note.author?.last_name} (${note.author?.username})`,
+    );
+    console.log(
+      `   Date: ${
+        note.date ? new Date(note.date).toLocaleString() : "Unknown"
+      }`,
+    );
+    console.log(
+      `   Category: ${note.category?.name || "No category"} ${
+        note.category?.color ? `(${note.category.color})` : ""
+      }`,
+    );
+    console.log(
+      `   Parent: ${note.parent?.name || "No parent"} ${
+        note.parent?.id ? `(${note.parent.id})` : ""
+      }`,
+    );
 
     // Fetch note components using direct session query
     const componentsResponse = await withErrorHandling(
-      () => session.query(`
+      () =>
+        session.query(`
         select 
           id,
           name,
@@ -85,17 +101,25 @@ export async function inspectNote(
         where note_id="${noteId}"
       `),
       {
-        operation: 'fetch note components',
-        entity: 'Component',
-        additionalData: { noteId, contextDisplay }
-      }
+        operation: "fetch note components",
+        entity: "Component",
+        additionalData: { noteId, contextDisplay },
+      },
     );
 
     if (componentsResponse?.data && componentsResponse.data.length > 0) {
       console.log("\n📎 Attachments:");
       componentsResponse.data.forEach((component: unknown) => {
-        const comp = component as { name: string; file_type?: string; size?: number };
-        console.log(`   • ${comp.name} (${comp.file_type || "unknown type"}, ${comp.size ? `${comp.size} bytes` : "unknown size"})`);
+        const comp = component as {
+          name: string;
+          file_type?: string;
+          size?: number;
+        };
+        console.log(
+          `   • ${comp.name} (${comp.file_type || "unknown type"}, ${
+            comp.size ? `${comp.size} bytes` : "unknown size"
+          })`,
+        );
       });
     } else {
       console.log("\n📎 No attachments found");
@@ -103,7 +127,8 @@ export async function inspectNote(
 
     // Fetch component locations using direct session query
     const locationsResponse = await withErrorHandling(
-      () => session.query(`
+      () =>
+        session.query(`
         select 
           component.name,
           location.name,
@@ -112,23 +137,30 @@ export async function inspectNote(
         where component.note_id="${noteId}"
       `),
       {
-        operation: 'fetch component locations',
-        entity: 'ComponentLocation',
-        additionalData: { noteId, contextDisplay }
-      }
+        operation: "fetch component locations",
+        entity: "ComponentLocation",
+        additionalData: { noteId, contextDisplay },
+      },
     );
 
     if (locationsResponse?.data && locationsResponse.data.length > 0) {
       console.log("\n📍 Component Locations:");
       locationsResponse.data.forEach((location: unknown) => {
-        const loc = location as { component?: { name: string }; location?: { name: string }; resource_identifier: string };
-        console.log(`   • ${loc.component?.name}: ${loc.location?.name} - ${loc.resource_identifier}`);
+        const loc = location as {
+          component?: { name: string };
+          location?: { name: string };
+          resource_identifier: string;
+        };
+        console.log(
+          `   • ${loc.component?.name}: ${loc.location?.name} - ${loc.resource_identifier}`,
+        );
       });
     }
 
     // Fetch metadata using direct session query
     const metadataResponse = await withErrorHandling(
-      () => session.query(`
+      () =>
+        session.query(`
         select 
           key,
           value
@@ -136,10 +168,10 @@ export async function inspectNote(
         where parent_id="${noteId}"
       `),
       {
-        operation: 'fetch note metadata',
-        entity: 'Metadata',
-        additionalData: { noteId, contextDisplay }
-      }
+        operation: "fetch note metadata",
+        entity: "Metadata",
+        additionalData: { noteId, contextDisplay },
+      },
     );
 
     if (metadataResponse?.data && metadataResponse.data.length > 0) {
@@ -155,9 +187,9 @@ export async function inspectNote(
     debug(`Note inspection completed for ID: ${noteId}`);
   } catch (error) {
     handleError(error, {
-      operation: 'inspect note',
-      entity: 'Note',
-      additionalData: { noteId, contextDisplay }
+      operation: "inspect note",
+      entity: "Note",
+      additionalData: { noteId, contextDisplay },
     });
     throw error;
   }

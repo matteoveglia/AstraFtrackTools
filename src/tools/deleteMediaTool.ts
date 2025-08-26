@@ -1,15 +1,24 @@
 import type { Session } from "@ftrack/api";
-import { Select, Confirm, Input, Checkbox } from "@cliffy/prompt";
+import { Checkbox, Confirm, Input, Select } from "@cliffy/prompt";
 import chalk from "chalk";
 import { debug } from "../utils/debug.ts";
 import type { ProjectContextService } from "../services/projectContext.ts";
 import type { QueryService } from "../services/queries.ts";
 import { DeletionService } from "../services/deletionService.ts";
-import type { DeleteMode, DryRunReportItem, DeletionResultSummary, ComponentDeletionChoice } from "../types/deleteMedia.ts";
+import type {
+  ComponentDeletionChoice,
+  DeleteMode,
+  DeletionResultSummary,
+  DryRunReportItem,
+} from "../types/deleteMedia.ts";
 import { SessionService } from "../services/session.ts";
-import { getDownloadsDirectory, verifyDirectoryAccess } from "../utils/systemPaths.ts";
+import {
+  getDownloadsDirectory,
+  verifyDirectoryAccess,
+} from "../utils/systemPaths.ts";
 import { FilterService } from "../services/filterService.ts";
 import { ListService } from "../services/listService.ts";
+import { AdvancedSelectionService } from "../services/advancedSelectionService.ts";
 
 // Simple loading spinner (shared)
 // Simple loading spinner with enhanced progress tracking
@@ -32,7 +41,7 @@ function createSpinner(message: string) {
       } else {
         console.log("");
       }
-    }
+    },
   };
 }
 
@@ -42,17 +51,17 @@ function createSpinner(message: string) {
 //   const frames = ["|", "/", "-", "\\"];
 //   let i = 0;
 //   let currentMessage = baseMessage;
-//   
+//
 //   const timer = setInterval(() => {
 //     const frame = frames[i = (i + 1) % frames.length];
 //     Deno.stdout.write(encoder.encode(`\r${currentMessage} ${frame}`));
 //   }, 120);
-//   
+//
 //   return {
 //     updateProgress(processed: number, total: number, etaMs?: number) {
 //       const percentage = Math.round((processed / total) * 100);
 //       let progressMsg = `${baseMessage} - ${percentage}%`;
-//       
+//
 //       if (etaMs !== undefined && etaMs > 0) {
 //         const etaSeconds = Math.ceil(etaMs / 1000);
 //         const minutes = Math.floor(etaSeconds / 60);
@@ -60,7 +69,7 @@ function createSpinner(message: string) {
 //         const etaFormat = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 //         progressMsg += ` (eta ${etaFormat})`;
 //       }
-//       
+//
 //       currentMessage = progressMsg;
 //     },
 //     stop(finalMessage?: string) {
@@ -89,13 +98,18 @@ function createProgressSpinner(baseMessage: string) {
 
   return {
     updateProgress(processed: number, total: number, etaMs?: number) {
-      const percentage = Math.max(0, Math.min(100, Math.round((processed / Math.max(total, 1)) * 100)));
+      const percentage = Math.max(
+        0,
+        Math.min(100, Math.round((processed / Math.max(total, 1)) * 100)),
+      );
       let s = ` - ${percentage}%`;
       if (etaMs !== undefined && etaMs > 0) {
         const etaSeconds = Math.ceil(etaMs / 1000);
         const minutes = Math.floor(etaSeconds / 60);
         const seconds = etaSeconds % 60;
-        const etaFormat = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        const etaFormat = `${minutes.toString().padStart(2, "0")}:${
+          seconds.toString().padStart(2, "0")
+        }`;
         s += ` (eta ${etaFormat})`;
       }
       suffix = s;
@@ -108,7 +122,7 @@ function createProgressSpinner(baseMessage: string) {
       } else {
         console.log("");
       }
-    }
+    },
   };
 }
 
@@ -122,7 +136,11 @@ async function writeMergedCSVWithProgress(
   const start = performance.now();
   const spinner = createProgressSpinner("Generating Preview CSV");
   const encoder = new TextEncoder();
-  const f = await Deno.open(filePath, { create: true, write: true, truncate: true });
+  const f = await Deno.open(filePath, {
+    create: true,
+    write: true,
+    truncate: true,
+  });
   try {
     const writeLine = async (line: string) => {
       await f.write(encoder.encode(line + "\n"));
@@ -130,7 +148,14 @@ async function writeMergedCSVWithProgress(
 
     // Summary section
     await writeLine("Summary");
-    await writeLine(["Versions Deleted","Components Deleted","Deleted Size (MB)","Failures"].join(","));
+    await writeLine(
+      [
+        "Versions Deleted",
+        "Components Deleted",
+        "Deleted Size (MB)",
+        "Failures",
+      ].join(","),
+    );
     const deletedMB = (summary.bytesDeleted / (1024 * 1024)).toFixed(2);
     await writeLine([
       summary.versionsDeleted.toString(),
@@ -153,7 +178,21 @@ async function writeMergedCSVWithProgress(
     await writeLine("-----");
     await writeLine("");
     await writeLine("Details");
-    await writeLine(["Operation","Asset Version ID","Asset Version Label","Shot Name","Status","User","Component ID","Component Name","Component Type","Size (MB)","Locations"].join(","));
+    await writeLine(
+      [
+        "Operation",
+        "Asset Version ID",
+        "Asset Version Label",
+        "Shot Name",
+        "Status",
+        "User",
+        "Component ID",
+        "Component Name",
+        "Component Type",
+        "Size (MB)",
+        "Locations",
+      ].join(","),
+    );
 
     // Details - process in batches
     const total = report.length;
@@ -162,7 +201,9 @@ async function writeMergedCSVWithProgress(
       const chunk = report.slice(processed, processed + batchSize);
       const lines: string[] = [];
       for (const item of chunk) {
-        const sizeMB = item.size != null ? (item.size / (1024 * 1024)).toFixed(2) : "";
+        const sizeMB = item.size != null
+          ? (item.size / (1024 * 1024)).toFixed(2)
+          : "";
         const row = [
           item.operation || "",
           item.assetVersionId || "",
@@ -178,17 +219,23 @@ async function writeMergedCSVWithProgress(
         ];
         lines.push(row.join(","));
       }
-      await f.write(encoder.encode(lines.join("\n") + (lines.length ? "\n" : "")));
+      await f.write(
+        encoder.encode(lines.join("\n") + (lines.length ? "\n" : "")),
+      );
       processed += chunk.length;
 
       const elapsed = performance.now() - start;
       const avgPerItem = processed > 0 ? elapsed / processed : 0;
       const remaining = Math.max(total - processed, 0);
-      const etaMs = avgPerItem > 0 ? Math.round(avgPerItem * remaining) : undefined;
+      const etaMs = avgPerItem > 0
+        ? Math.round(avgPerItem * remaining)
+        : undefined;
       spinner.updateProgress(processed, total, etaMs);
     }
   } finally {
-    try { f.close(); } catch {}
+    try {
+      f.close();
+    } catch {}
     spinner.stop();
   }
 }
@@ -199,7 +246,7 @@ async function writeMergedCSVWithProgress(
  */
 async function selectFromList(
   session: Session,
-  projectContextService: ProjectContextService
+  projectContextService: ProjectContextService,
 ): Promise<string[] | null> {
   const listService = new ListService(session, projectContextService);
 
@@ -221,7 +268,9 @@ async function selectFromList(
   }
   // Sort lists within each category
   for (const categoryName of Object.keys(listsByCategory)) {
-    listsByCategory[categoryName].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    listsByCategory[categoryName].sort((a, b) =>
+      (a.name || "").localeCompare(b.name || "")
+    );
   }
 
   // 3) Category selection
@@ -257,14 +306,18 @@ async function selectFromList(
 
   // 5) Resolve asset version IDs from list
   console.log(chalk.blue("Extracting asset versions from list..."));
-  const versionIds = await listService.getAssetVersionIdsFromList(selectedListId);
+  const versionIds = await listService.getAssetVersionIdsFromList(
+    selectedListId,
+  );
 
   if (versionIds.length === 0) {
     console.log(chalk.yellow("No asset versions found in the selected list."));
     return null;
   }
 
-  console.log(chalk.green(`Found ${versionIds.length} asset versions in the list.`));
+  console.log(
+    chalk.green(`Found ${versionIds.length} asset versions in the list.`),
+  );
   return versionIds;
 }
 
@@ -283,21 +336,36 @@ export async function deleteMediaTool(
 
   // Enforce project-scoped only
   console.log(chalk.blue("\n📋 Delete Media Tool"));
-  console.log(chalk.green("🔒 Safe actions are clearly marked - actual deletion only occurs after final confirmation."));
-  console.log(chalk.blue("📊 Progress Timeline: Select Mode → Preview (safe) → Export CSV (safe) → Confirm → Execute"));
+  console.log(
+    chalk.green(
+      "🔒 Safe actions are clearly marked - actual deletion only occurs after final confirmation.",
+    ),
+  );
+  console.log(
+    chalk.blue(
+      "📊 Progress Timeline: Select Mode → Preview (safe) → Export CSV (safe) → Confirm → Execute",
+    ),
+  );
 
   const mode = (await Select.prompt({
     message: "Select deletion mode (safe - no deletion yet)",
     options: [
       { name: "Delete whole asset versions", value: "versions" },
-      { name: "Delete components only (original/encoded) (safe)", value: "components" },
+      {
+        name: "Delete components only (original/encoded) (safe)",
+        value: "components",
+      },
       { name: "Age-based cleanup", value: "age" },
       { name: "Filter-based deletion", value: "filter" },
     ],
   })) as DeleteMode;
 
   const sessionService = new SessionService(session);
-  const deletionService = new DeletionService(session, sessionService, queryService);
+  const deletionService = new DeletionService(
+    session,
+    sessionService,
+    queryService,
+  );
 
   if (mode === "versions") {
     // Choose input method
@@ -306,6 +374,7 @@ export async function deleteMediaTool(
       options: [
         { name: "Enter AssetVersion IDs directly", value: "ids" },
         { name: "Select-all from list", value: "list" },
+        { name: "🔍 Advanced selection (search, wildcards, filters)", value: "advanced" },
       ],
     });
 
@@ -316,35 +385,78 @@ export async function deleteMediaTool(
         message: "Enter AssetVersion IDs to preview delete (comma-separated)",
         default: "",
       });
-      versionIds = idsRaw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(Boolean);
+      versionIds = idsRaw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(
+        Boolean,
+      );
 
       if (versionIds.length === 0) {
         console.log(chalk.yellow("No IDs provided. Aborting."));
         return;
       }
-    } else {
+    } else if (inputMethod === "list") {
       // Select from list
-      const listVersionIds = await selectFromList(session, projectContextService);
+      const listVersionIds = await selectFromList(
+        session,
+        projectContextService,
+      );
       if (!listVersionIds) {
         console.log(chalk.yellow("Operation cancelled."));
         return;
       }
       versionIds = listVersionIds;
+    } else {
+      // Advanced selection
+      const advancedSelectionService = new AdvancedSelectionService(
+        session,
+        projectContextService,
+        queryService,
+      );
+      const result = await advancedSelectionService.selectAssetVersions({
+        pageSize: 15,
+        enableSearch: true,
+        enableWildcards: true,
+        enableFuzzySearch: true,
+        allowMultiple: true,
+        showMetadata: true,
+      });
+
+      if (result.cancelled) {
+        console.log(chalk.yellow("Selection cancelled."));
+        return;
+      }
+
+      if (result.searchUsed && result.patterns) {
+        console.log(chalk.green(`Selected ${result.items.length} asset versions using patterns: ${result.patterns.join(", ")}`));
+      } else {
+        console.log(chalk.green(`Selected ${result.items.length} asset versions`));
+      }
+
+      versionIds = result.items.map(item => item.id);
     }
 
-    const { report, summary } = await deletionService.deleteAssetVersions(versionIds, { dryRun: true });
+    const { report, summary } = await deletionService.deleteAssetVersions(
+      versionIds,
+      { dryRun: true },
+    );
 
-    console.log(chalk.green(`\nPreview generated for ${versionIds.length} AssetVersion ID(s).`));
+    console.log(
+      chalk.green(
+        `\nPreview generated for ${versionIds.length} AssetVersion ID(s).`,
+      ),
+    );
 
     // Export dry-run details to Downloads directory
     const downloadsDir = getDownloadsDirectory();
     const canWrite = await verifyDirectoryAccess(downloadsDir);
 
     if (!canWrite) {
-      console.log(chalk.red(`❌ Cannot write to Downloads directory at: ${downloadsDir}`));
+      console.log(
+        chalk.red(`❌ Cannot write to Downloads directory at: ${downloadsDir}`),
+      );
     } else {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const mergedPath = `${downloadsDir}/delete-media-preview-${timestamp}.csv`;
+      const mergedPath =
+        `${downloadsDir}/delete-media-preview-${timestamp}.csv`;
 
       try {
         await writeMergedCSVWithProgress(mergedPath, summary, report);
@@ -360,16 +472,25 @@ export async function deleteMediaTool(
     console.log(`\nSummary:`);
     console.log(` - Versions: ${summary.versionsDeleted}`);
     console.log(` - Components: ${summary.componentsDeleted}`);
-    console.log(` - Size (MB): ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`);
+    console.log(
+      ` - Size (MB): ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`,
+    );
 
     // Typed confirmation gating sample (per decisions)
     const needsTyped = versionIds.length > 1;
     let proceed = false;
     if (needsTyped) {
-      const confirmText = await Input.prompt({ message: `Type "DELETE NOW" to confirm preview completion`, default: "" });
+      const confirmText = await Input.prompt({
+        message: `Type "DELETE NOW" to confirm preview completion`,
+        default: "",
+      });
       proceed = confirmText.trim() === "DELETE NOW";
     } else {
-      proceed = await Confirm.prompt({ message: "⚠️  FINAL CONFIRMATION: Delete these asset versions permanently?", default: false });
+      proceed = await Confirm.prompt({
+        message:
+          "⚠️  FINAL CONFIRMATION: Delete these asset versions permanently?",
+        default: false,
+      });
     }
 
     if (!proceed) {
@@ -378,25 +499,38 @@ export async function deleteMediaTool(
     }
 
     if (proceed) {
-        console.log(chalk.red("🗑️  Executing deletion..."));
-        
-        // Perform actual deletion
-        const deletionResult = await deletionService.deleteAssetVersions(versionIds, { dryRun: false });
-        
-        // Show final results
-         console.log(chalk.green(`\n✅ Deletion completed!`));
-         console.log(`Successfully processed: ${deletionResult.summary.versionsDeleted} versions`);
-         console.log(`Total size freed: ${DeletionService.formatBytes(deletionResult.summary.bytesDeleted)}`);
-         
-         if (deletionResult.summary.failures.length > 0) {
-           console.log(chalk.yellow(`\n⚠️  ${deletionResult.summary.failures.length} failures occurred:`));
-           deletionResult.summary.failures.forEach(failure => {
-             console.log(chalk.red(`  - ${failure.id}: ${failure.reason}`));
-           });
-         }
-      } else {
-        console.log(chalk.yellow("Deletion cancelled by user."));
+      console.log(chalk.red("🗑️  Executing deletion..."));
+
+      // Perform actual deletion
+      const deletionResult = await deletionService.deleteAssetVersions(
+        versionIds,
+        { dryRun: false },
+      );
+
+      // Show final results
+      console.log(chalk.green(`\n✅ Deletion completed!`));
+      console.log(
+        `Successfully processed: ${deletionResult.summary.versionsDeleted} versions`,
+      );
+      console.log(
+        `Total size freed: ${
+          DeletionService.formatBytes(deletionResult.summary.bytesDeleted)
+        }`,
+      );
+
+      if (deletionResult.summary.failures.length > 0) {
+        console.log(
+          chalk.yellow(
+            `\n⚠️  ${deletionResult.summary.failures.length} failures occurred:`,
+          ),
+        );
+        deletionResult.summary.failures.forEach((failure) => {
+          console.log(chalk.red(`  - ${failure.id}: ${failure.reason}`));
+        });
       }
+    } else {
+      console.log(chalk.yellow("Deletion cancelled by user."));
+    }
     return;
   }
 
@@ -408,6 +542,7 @@ export async function deleteMediaTool(
         { name: "Enter AssetVersion IDs directly", value: "ids" },
         { name: "Search by shot name(s)", value: "shots" },
         { name: "Select-all from list", value: "list" },
+        { name: "🔍 Advanced selection (search, wildcards, filters)", value: "advanced" },
       ],
     });
 
@@ -415,17 +550,22 @@ export async function deleteMediaTool(
 
     if (inputMethod === "ids") {
       const idsRaw = await Input.prompt({
-        message: "Enter AssetVersion IDs to preview component delete (comma-separated)",
+        message:
+          "Enter AssetVersion IDs to preview component delete (comma-separated)",
         default: "",
       });
-      versionIds = idsRaw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(Boolean);
+      versionIds = idsRaw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(
+        Boolean,
+      );
     } else if (inputMethod === "shots") {
       // Search by shot names
       const shotNamesRaw = await Input.prompt({
-        message: "Enter shot name(s) to find asset versions (comma-separated). Tip: use wildcard * (e.g., SHOT02*)",
+        message:
+          "Enter shot name(s) to find asset versions (comma-separated). Tip: use wildcard * (e.g., SHOT02*)",
         default: "",
       });
-      const shotNames = shotNamesRaw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(Boolean);
+      const shotNames = shotNamesRaw.split(/[\,\s\u001f]+/).map((s) => s.trim())
+        .filter(Boolean);
 
       if (shotNames.length === 0) {
         console.log(chalk.yellow("No shot names provided. Aborting."));
@@ -433,24 +573,30 @@ export async function deleteMediaTool(
       }
 
       // Search for asset versions in specified shots
-      console.log(chalk.blue("Searching for asset versions in specified shots..."));
-      
+      console.log(
+        chalk.blue("Searching for asset versions in specified shots..."),
+      );
+
       // Build query with wildcard support
-      const shotFilters = shotNames.map(name => {
-        if (name.includes('*')) {
+      const shotFilters = shotNames.map((name) => {
+        if (name.includes("*")) {
           // Translate '*' to SQL LIKE '%' for Ftrack query
-          const pattern = name.replaceAll('*', '%');
+          const pattern = name.replaceAll("*", "%");
           return `asset.parent.name like "${pattern}"`;
         }
         // Exact match
         return `asset.parent.name is "${name}"`;
       });
-      
+
       const shotFilter = shotFilters.join(" or ");
       const result = await queryService.queryAssetVersions(shotFilter);
-      
+
       if (!result.data || result.data.length === 0) {
-        console.log(chalk.yellow(`No asset versions found in shots: ${shotNames.join(", ")}`));
+        console.log(
+          chalk.yellow(
+            `No asset versions found in shots: ${shotNames.join(", ")}`,
+          ),
+        );
         return;
       }
 
@@ -476,16 +622,47 @@ export async function deleteMediaTool(
       if (selectedVersions.includes("all")) {
         versionIds = (result.data as any[]).map((v: any) => v.id);
       } else {
-        versionIds = selectedVersions.filter(id => id !== "all");
+        versionIds = selectedVersions.filter((id) => id !== "all");
       }
-    } else {
+    } else if (inputMethod === "list") {
       // Select from list
-      const listVersionIds = await selectFromList(session, projectContextService);
+      const listVersionIds = await selectFromList(
+        session,
+        projectContextService,
+      );
       if (!listVersionIds) {
         console.log(chalk.yellow("Operation cancelled."));
         return;
       }
       versionIds = listVersionIds;
+    } else {
+      // Advanced selection
+      const advancedSelectionService = new AdvancedSelectionService(
+        session,
+        projectContextService,
+        queryService,
+      );
+      const result = await advancedSelectionService.selectAssetVersions({
+        pageSize: 15,
+        enableSearch: true,
+        enableWildcards: true,
+        enableFuzzySearch: true,
+        allowMultiple: true,
+        showMetadata: true,
+      });
+
+      if (result.cancelled) {
+        console.log(chalk.yellow("Selection cancelled."));
+        return;
+      }
+
+      if (result.searchUsed && result.patterns) {
+        console.log(chalk.green(`Selected ${result.items.length} asset versions using patterns: ${result.patterns.join(", ")}`));
+      } else {
+        console.log(chalk.green(`Selected ${result.items.length} asset versions`));
+      }
+
+      versionIds = result.items.map(item => item.id);
     }
 
     if (versionIds.length === 0) {
@@ -510,13 +687,18 @@ export async function deleteMediaTool(
       // Prefetch display info for prompts in a single query
       const displayMap = new Map<string, string>();
       try {
-        const filter = `id in (${versionIds.map((id) => `"${id}"`).join(", ")})`;
+        const filter = `id in (${
+          versionIds.map((id) => `"${id}"`).join(", ")
+        })`;
         const details = await queryService.queryAssetVersions(filter);
         for (const v of details.data as any[]) {
           const shotName = v.asset?.parent?.name || "Unknown";
           const assetName = v.asset?.name || "Unknown";
           const versionNum = v.version || "?";
-          displayMap.set(v.id, `${shotName} - ${assetName} v${versionNum} - ${v.id}`);
+          displayMap.set(
+            v.id,
+            `${shotName} - ${assetName} v${versionNum} - ${v.id}`,
+          );
         }
       } catch (_err) {
         // If this fails, we'll fall back to ID-only labels
@@ -545,24 +727,33 @@ export async function deleteMediaTool(
     let report: DryRunReportItem[] = [];
     let summary: DeletionResultSummary;
     try {
-      const result = await deletionService.deleteComponents(choiceMap, { dryRun: true });
+      const result = await deletionService.deleteComponents(choiceMap, {
+        dryRun: true,
+      });
       report = result.report;
       summary = result.summary;
     } finally {
       spinner.stop();
     }
 
-    console.log(chalk.green(`\nPreview generated for ${versionIds.length} AssetVersion ID(s).`));
+    console.log(
+      chalk.green(
+        `\nPreview generated for ${versionIds.length} AssetVersion ID(s).`,
+      ),
+    );
 
     // Export dry-run details to Downloads directory
     const downloadsDir = getDownloadsDirectory();
     const canWrite = await verifyDirectoryAccess(downloadsDir);
 
     if (!canWrite) {
-      console.log(chalk.red(`❌ Cannot write to Downloads directory at: ${downloadsDir}`));
+      console.log(
+        chalk.red(`❌ Cannot write to Downloads directory at: ${downloadsDir}`),
+      );
     } else {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const mergedPath = `${downloadsDir}/delete-media-components-preview-${timestamp}.csv`;
+      const mergedPath =
+        `${downloadsDir}/delete-media-components-preview-${timestamp}.csv`;
 
       try {
         await writeMergedCSVWithProgress(mergedPath, summary, report);
@@ -578,16 +769,24 @@ export async function deleteMediaTool(
     console.log(`\nSummary:`);
     console.log(` - Versions: ${summary.versionsDeleted}`);
     console.log(` - Components: ${summary.componentsDeleted}`);
-    console.log(` - Size (MB): ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`);
+    console.log(
+      ` - Size (MB): ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`,
+    );
 
     // Typed confirmation gating sample (per decisions)
     const needsTyped = versionIds.length > 1;
     let proceed = false;
     if (needsTyped) {
-      const confirmText = await Input.prompt({ message: `Type "DELETE NOW" to confirm preview completion`, default: "" });
+      const confirmText = await Input.prompt({
+        message: `Type "DELETE NOW" to confirm preview completion`,
+        default: "",
+      });
       proceed = confirmText.trim() === "DELETE NOW";
     } else {
-      proceed = await Confirm.prompt({ message: "⚠️  FINAL CONFIRMATION: Delete these components permanently?", default: false });
+      proceed = await Confirm.prompt({
+        message: "⚠️  FINAL CONFIRMATION: Delete these components permanently?",
+        default: false,
+      });
     }
 
     if (!proceed) {
@@ -596,26 +795,40 @@ export async function deleteMediaTool(
     }
 
     if (proceed) {
-        console.log(chalk.red("🗑️  Executing component deletion..."));
-        
-        // Perform actual deletion
-        const deletionResult = await deletionService.deleteComponents(choiceMap, { dryRun: false });
-        
-        // Show final results
-        console.log(chalk.green(`\n✅ Component deletion completed!`));
-        console.log(`Successfully processed: ${deletionResult.summary.versionsDeleted} versions`);
-        console.log(`Components deleted: ${deletionResult.summary.componentsDeleted}`);
-        console.log(`Total size freed: ${DeletionService.formatBytes(deletionResult.summary.bytesDeleted)}`);
-        
-        if (deletionResult.summary.failures.length > 0) {
-          console.log(chalk.yellow(`\n⚠️  ${deletionResult.summary.failures.length} failures occurred:`));
-          deletionResult.summary.failures.forEach(failure => {
-            console.log(chalk.red(`  - ${failure.id}: ${failure.reason}`));
-          });
-        }
-      } else {
-        console.log(chalk.yellow("Deletion cancelled by user."));
+      console.log(chalk.red("🗑️  Executing component deletion..."));
+
+      // Perform actual deletion
+      const deletionResult = await deletionService.deleteComponents(choiceMap, {
+        dryRun: false,
+      });
+
+      // Show final results
+      console.log(chalk.green(`\n✅ Component deletion completed!`));
+      console.log(
+        `Successfully processed: ${deletionResult.summary.versionsDeleted} versions`,
+      );
+      console.log(
+        `Components deleted: ${deletionResult.summary.componentsDeleted}`,
+      );
+      console.log(
+        `Total size freed: ${
+          DeletionService.formatBytes(deletionResult.summary.bytesDeleted)
+        }`,
+      );
+
+      if (deletionResult.summary.failures.length > 0) {
+        console.log(
+          chalk.yellow(
+            `\n⚠️  ${deletionResult.summary.failures.length} failures occurred:`,
+          ),
+        );
+        deletionResult.summary.failures.forEach((failure) => {
+          console.log(chalk.red(`  - ${failure.id}: ${failure.reason}`));
+        });
       }
+    } else {
+      console.log(chalk.yellow("Deletion cancelled by user."));
+    }
     return;
   }
 
@@ -635,7 +848,8 @@ export async function deleteMediaTool(
 
     if (ageType === "older") {
       toDate = await Input.prompt({
-        message: "Enter date (YYYY-MM-DD) - versions older than this will be selected:",
+        message:
+          "Enter date (YYYY-MM-DD) - versions older than this will be selected:",
         validate: (input) => {
           if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
             return "Please enter date in YYYY-MM-DD format";
@@ -645,7 +859,8 @@ export async function deleteMediaTool(
       });
     } else if (ageType === "newer") {
       fromDate = await Input.prompt({
-        message: "Enter date (YYYY-MM-DD) - versions newer than this will be selected:",
+        message:
+          "Enter date (YYYY-MM-DD) - versions newer than this will be selected:",
         validate: (input) => {
           if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
             return "Please enter date in YYYY-MM-DD format";
@@ -702,21 +917,29 @@ export async function deleteMediaTool(
       from: fromDate,
       to: toDate,
     };
-    
+
     const whereClause = filterService.buildWhere({ date: dateFilter });
-    
-    console.log(chalk.blue("Searching for asset versions matching age criteria..."));
-    
+
+    console.log(
+      chalk.blue("Searching for asset versions matching age criteria..."),
+    );
+
     // Query asset versions with date filter
     const result = await queryService.queryAssetVersions(whereClause);
-    
+
     if (!result.data || result.data.length === 0) {
-      console.log(chalk.yellow("No asset versions found matching the age criteria."));
+      console.log(
+        chalk.yellow("No asset versions found matching the age criteria."),
+      );
       return;
     }
 
     const versionIds = (result.data as any[]).map((v: any) => v.id);
-    console.log(chalk.green(`Found ${versionIds.length} asset versions matching age criteria.`));
+    console.log(
+      chalk.green(
+        `Found ${versionIds.length} asset versions matching age criteria.`,
+      ),
+    );
 
     // Perform deletion based on type
     let report: DryRunReportItem[] = [];
@@ -725,15 +948,19 @@ export async function deleteMediaTool(
     const spinner = createSpinner("Generating preview...");
     try {
       if (deletionType === "versions") {
-        const result = await deletionService.deleteAssetVersions(versionIds, { dryRun: true });
+        const result = await deletionService.deleteAssetVersions(versionIds, {
+          dryRun: true,
+        });
         report = result.report;
         summary = result.summary;
       } else {
         // Components mode
         const choiceMap = new Map<string, ComponentDeletionChoice>();
         for (const id of versionIds) choiceMap.set(id, componentChoice);
-        
-        const result = await deletionService.deleteComponents(choiceMap, { dryRun: true });
+
+        const result = await deletionService.deleteComponents(choiceMap, {
+          dryRun: true,
+        });
         report = result.report;
         summary = result.summary;
       }
@@ -741,17 +968,24 @@ export async function deleteMediaTool(
       spinner.stop();
     }
 
-    console.log(chalk.green(`\nAge-based preview generated for ${versionIds.length} AssetVersion(s).`));
+    console.log(
+      chalk.green(
+        `\nAge-based preview generated for ${versionIds.length} AssetVersion(s).`,
+      ),
+    );
 
     // Export and summary logic (reuse existing code)
     const downloadsDir = getDownloadsDirectory();
     const canWrite = await verifyDirectoryAccess(downloadsDir);
 
     if (!canWrite) {
-      console.log(chalk.red(`❌ Cannot write to Downloads directory at: ${downloadsDir}`));
+      console.log(
+        chalk.red(`❌ Cannot write to Downloads directory at: ${downloadsDir}`),
+      );
     } else {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const mergedPath = `${downloadsDir}/delete-media-age-preview-${timestamp}.csv`;
+      const mergedPath =
+        `${downloadsDir}/delete-media-age-preview-${timestamp}.csv`;
 
       try {
         await writeMergedCSVWithProgress(mergedPath, summary, report);
@@ -767,16 +1001,25 @@ export async function deleteMediaTool(
     console.log(`\nSummary:`);
     console.log(` - Versions: ${summary.versionsDeleted}`);
     console.log(` - Components: ${summary.componentsDeleted}`);
-    console.log(` - Size (MB): ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`);
+    console.log(
+      ` - Size (MB): ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`,
+    );
 
     // Confirmation gating
     const needsTyped = versionIds.length > 1;
     let proceed = false;
     if (needsTyped) {
-      const confirmText = await Input.prompt({ message: `Type "DELETE NOW" to confirm preview completion`, default: "" });
+      const confirmText = await Input.prompt({
+        message: `Type "DELETE NOW" to confirm preview completion`,
+        default: "",
+      });
       proceed = confirmText.trim() === "DELETE NOW";
     } else {
-      proceed = await Confirm.prompt({ message: "⚠️  FINAL CONFIRMATION: Delete these asset versions permanently?", default: false });
+      proceed = await Confirm.prompt({
+        message:
+          "⚠️  FINAL CONFIRMATION: Delete these asset versions permanently?",
+        default: false,
+      });
     }
 
     if (!proceed) {
@@ -786,18 +1029,31 @@ export async function deleteMediaTool(
 
     if (proceed) {
       console.log(chalk.red("🗑️  Executing deletion..."));
-      
+
       // Perform actual deletion
-      const deletionResult = await deletionService.deleteAssetVersions(versionIds, { dryRun: false });
-      
+      const deletionResult = await deletionService.deleteAssetVersions(
+        versionIds,
+        { dryRun: false },
+      );
+
       // Show final results
       console.log(chalk.green(`\n✅ Deletion completed!`));
-      console.log(`Successfully processed: ${deletionResult.summary.versionsDeleted} versions`);
-      console.log(`Total size freed: ${DeletionService.formatBytes(deletionResult.summary.bytesDeleted)}`);
-      
+      console.log(
+        `Successfully processed: ${deletionResult.summary.versionsDeleted} versions`,
+      );
+      console.log(
+        `Total size freed: ${
+          DeletionService.formatBytes(deletionResult.summary.bytesDeleted)
+        }`,
+      );
+
       if (deletionResult.summary.failures.length > 0) {
-        console.log(chalk.yellow(`\n⚠️  ${deletionResult.summary.failures.length} failures occurred:`));
-        deletionResult.summary.failures.forEach(failure => {
+        console.log(
+          chalk.yellow(
+            `\n⚠️  ${deletionResult.summary.failures.length} failures occurred:`,
+          ),
+        );
+        deletionResult.summary.failures.forEach((failure) => {
           console.log(chalk.red(`  - ${failure.id}: ${failure.reason}`));
         });
       }
@@ -806,8 +1062,6 @@ export async function deleteMediaTool(
     }
     return;
   }
-
-
 
   if (mode === "filter") {
     // Choose which filters to apply
@@ -826,16 +1080,30 @@ export async function deleteMediaTool(
     let dateKind: "older" | "newer" | "between" | undefined;
     let dateFrom: string | undefined;
     let dateTo: string | undefined;
-    const customFilters: { key: string; op: "eq" | "neq" | "contains" | "true" | "false"; value?: string }[] = [];
+    const customFilters: {
+      key: string;
+      op: "eq" | "neq" | "contains" | "true" | "false";
+      value?: string;
+    }[] = [];
 
     if (selectedFilters.includes("status_names")) {
-      const raw = await Input.prompt({ message: "Enter status name(s) (comma-separated)", default: "" });
-      statusNames = raw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(Boolean);
+      const raw = await Input.prompt({
+        message: "Enter status name(s) (comma-separated)",
+        default: "",
+      });
+      statusNames = raw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(
+        Boolean,
+      );
     }
 
     if (selectedFilters.includes("usernames")) {
-      const raw = await Input.prompt({ message: "Enter username(s) (comma-separated)", default: "" });
-      usernames = raw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(Boolean);
+      const raw = await Input.prompt({
+        message: "Enter username(s) (comma-separated)",
+        default: "",
+      });
+      usernames = raw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(
+        Boolean,
+      );
     }
 
     if (selectedFilters.includes("date")) {
@@ -850,22 +1118,40 @@ export async function deleteMediaTool(
 
       if (dateKind === "older") {
         dateTo = await Input.prompt({
-          message: "Enter date (YYYY-MM-DD) - versions older than this will be selected:",
-          validate: (input) => (/^\d{4}-\d{2}-\d{2}$/.test(input) ? true : "Please enter date in YYYY-MM-DD format"),
+          message:
+            "Enter date (YYYY-MM-DD) - versions older than this will be selected:",
+          validate: (
+            input,
+          ) => (/^\d{4}-\d{2}-\d{2}$/.test(input)
+            ? true
+            : "Please enter date in YYYY-MM-DD format"),
         });
       } else if (dateKind === "newer") {
         dateFrom = await Input.prompt({
-          message: "Enter date (YYYY-MM-DD) - versions newer than this will be selected:",
-          validate: (input) => (/^\d{4}-\d{2}-\d{2}$/.test(input) ? true : "Please enter date in YYYY-MM-DD format"),
+          message:
+            "Enter date (YYYY-MM-DD) - versions newer than this will be selected:",
+          validate: (
+            input,
+          ) => (/^\d{4}-\d{2}-\d{2}$/.test(input)
+            ? true
+            : "Please enter date in YYYY-MM-DD format"),
         });
       } else {
         dateFrom = await Input.prompt({
           message: "Enter start date (YYYY-MM-DD):",
-          validate: (input) => (/^\d{4}-\d{2}-\d{2}$/.test(input) ? true : "Please enter date in YYYY-MM-DD format"),
+          validate: (
+            input,
+          ) => (/^\d{4}-\d{2}-\d{2}$/.test(input)
+            ? true
+            : "Please enter date in YYYY-MM-DD format"),
         });
         dateTo = await Input.prompt({
           message: "Enter end date (YYYY-MM-DD):",
-          validate: (input) => (/^\d{4}-\d{2}-\d{2}$/.test(input) ? true : "Please enter date in YYYY-MM-DD format"),
+          validate: (
+            input,
+          ) => (/^\d{4}-\d{2}-\d{2}$/.test(input)
+            ? true
+            : "Please enter date in YYYY-MM-DD format"),
         });
       }
     }
@@ -873,7 +1159,10 @@ export async function deleteMediaTool(
     if (selectedFilters.includes("custom")) {
       let addMore = true;
       while (addMore) {
-        const key = await Input.prompt({ message: "Custom attribute key (exact)", default: "" });
+        const key = await Input.prompt({
+          message: "Custom attribute key (exact)",
+          default: "",
+        });
         const op = await Select.prompt({
           message: `Operator for ${key}`,
           options: [
@@ -891,7 +1180,10 @@ export async function deleteMediaTool(
         }
 
         customFilters.push({ key, op, value });
-        addMore = await Confirm.prompt({ message: "Add another custom attribute filter?", default: false });
+        addMore = await Confirm.prompt({
+          message: "Add another custom attribute filter?",
+          default: false,
+        });
       }
     }
 
@@ -900,7 +1192,9 @@ export async function deleteMediaTool(
     const whereClause = filterService.buildWhere({
       status: statusNames?.length ? { names: statusNames } : undefined,
       user: usernames?.length ? { usernames } : undefined,
-      date: dateKind ? { kind: dateKind, from: dateFrom, to: dateTo } : undefined,
+      date: dateKind
+        ? { kind: dateKind, from: dateFrom, to: dateTo }
+        : undefined,
       custom: customFilters.length ? customFilters : undefined,
     });
 
@@ -912,12 +1206,18 @@ export async function deleteMediaTool(
     console.log(chalk.blue("Searching for asset versions matching filters..."));
     const avResult = await queryService.queryAssetVersions(whereClause);
     if (!avResult.data || avResult.data.length === 0) {
-      console.log(chalk.yellow("No asset versions found matching the filters."));
+      console.log(
+        chalk.yellow("No asset versions found matching the filters."),
+      );
       return;
     }
 
     const versionIds = (avResult.data as any[]).map((v: any) => v.id);
-    console.log(chalk.green(`Found ${versionIds.length} asset versions matching filters.`));
+    console.log(
+      chalk.green(
+        `Found ${versionIds.length} asset versions matching filters.`,
+      ),
+    );
 
     // Choose deletion scope
     const deletionType = await Select.prompt({
@@ -946,13 +1246,17 @@ export async function deleteMediaTool(
     let summary: DeletionResultSummary;
     try {
       if (deletionType === "versions") {
-        const result = await deletionService.deleteAssetVersions(versionIds, { dryRun: true });
+        const result = await deletionService.deleteAssetVersions(versionIds, {
+          dryRun: true,
+        });
         report = result.report;
         summary = result.summary;
       } else {
         const choiceMap = new Map<string, ComponentDeletionChoice>();
         for (const id of versionIds) choiceMap.set(id, componentChoice);
-        const result = await deletionService.deleteComponents(choiceMap, { dryRun: true });
+        const result = await deletionService.deleteComponents(choiceMap, {
+          dryRun: true,
+        });
         report = result.report;
         summary = result.summary;
       }
@@ -960,16 +1264,23 @@ export async function deleteMediaTool(
       spinner.stop();
     }
 
-    console.log(chalk.green(`\nFilter-based preview generated for ${versionIds.length} AssetVersion(s).`));
+    console.log(
+      chalk.green(
+        `\nFilter-based preview generated for ${versionIds.length} AssetVersion(s).`,
+      ),
+    );
 
     // Export
     const downloadsDir = getDownloadsDirectory();
     const canWrite = await verifyDirectoryAccess(downloadsDir);
     if (!canWrite) {
-      console.log(chalk.red(`❌ Cannot write to Downloads directory at: ${downloadsDir}`));
+      console.log(
+        chalk.red(`❌ Cannot write to Downloads directory at: ${downloadsDir}`),
+      );
     } else {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const mergedPath = `${downloadsDir}/delete-media-filter-preview-${timestamp}.csv`;
+      const mergedPath =
+        `${downloadsDir}/delete-media-filter-preview-${timestamp}.csv`;
       try {
         const mergedCsv = formatMergedCSV(summary, report);
         await writeMergedCSVWithProgress(mergedPath, summary, report);
@@ -985,16 +1296,25 @@ export async function deleteMediaTool(
     console.log(`\nSummary:`);
     console.log(` - Versions: ${summary.versionsDeleted}`);
     console.log(` - Components: ${summary.componentsDeleted}`);
-    console.log(` - Size (MB): ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`);
+    console.log(
+      ` - Size (MB): ${(summary.bytesDeleted / (1024 * 1024)).toFixed(2)}`,
+    );
 
     // Confirmation gating
     const needsTyped = versionIds.length > 1;
     let proceed = false;
     if (needsTyped) {
-      const confirmText = await Input.prompt({ message: `Type "DELETE NOW" to confirm preview completion`, default: "" });
+      const confirmText = await Input.prompt({
+        message: `Type "DELETE NOW" to confirm preview completion`,
+        default: "",
+      });
       proceed = confirmText.trim() === "DELETE NOW";
     } else {
-      proceed = await Confirm.prompt({ message: "⚠️  FINAL CONFIRMATION: Delete these asset versions permanently?", default: false });
+      proceed = await Confirm.prompt({
+        message:
+          "⚠️  FINAL CONFIRMATION: Delete these asset versions permanently?",
+        default: false,
+      });
     }
 
     if (!proceed) {
@@ -1004,18 +1324,31 @@ export async function deleteMediaTool(
 
     if (proceed) {
       console.log(chalk.red("🗑️  Executing deletion..."));
-      
+
       // Perform actual deletion
-      const deletionResult = await deletionService.deleteAssetVersions(versionIds, { dryRun: false });
-      
+      const deletionResult = await deletionService.deleteAssetVersions(
+        versionIds,
+        { dryRun: false },
+      );
+
       // Show final results
       console.log(chalk.green(`\n✅ Deletion completed!`));
-      console.log(`Successfully processed: ${deletionResult.summary.versionsDeleted} versions`);
-      console.log(`Total size freed: ${DeletionService.formatBytes(deletionResult.summary.bytesDeleted)}`);
-      
+      console.log(
+        `Successfully processed: ${deletionResult.summary.versionsDeleted} versions`,
+      );
+      console.log(
+        `Total size freed: ${
+          DeletionService.formatBytes(deletionResult.summary.bytesDeleted)
+        }`,
+      );
+
       if (deletionResult.summary.failures.length > 0) {
-        console.log(chalk.yellow(`\n⚠️  ${deletionResult.summary.failures.length} failures occurred:`));
-        deletionResult.summary.failures.forEach(failure => {
+        console.log(
+          chalk.yellow(
+            `\n⚠️  ${deletionResult.summary.failures.length} failures occurred:`,
+          ),
+        );
+        deletionResult.summary.failures.forEach((failure) => {
           console.log(chalk.red(`  - ${failure.id}: ${failure.reason}`));
         });
       }
@@ -1028,7 +1361,10 @@ export async function deleteMediaTool(
   // End
 }
 
-function formatMergedCSV(summary: DeletionResultSummary, report: DryRunReportItem[]): string {
+function formatMergedCSV(
+  summary: DeletionResultSummary,
+  report: DryRunReportItem[],
+): string {
   const lines: string[] = [];
   // Summary section with human-readable headers and MB conversion
   lines.push("Summary");
@@ -1036,14 +1372,14 @@ function formatMergedCSV(summary: DeletionResultSummary, report: DryRunReportIte
     "Versions Deleted",
     "Components Deleted",
     "Deleted Size (MB)",
-    "Failures"
+    "Failures",
   ];
   const deletedMB = (summary.bytesDeleted / (1024 * 1024)).toFixed(2);
   const summaryValues = [
     summary.versionsDeleted.toString(),
     summary.componentsDeleted.toString(),
     deletedMB,
-    summary.failures.length.toString()
+    summary.failures.length.toString(),
   ];
   lines.push(summaryHeaders.join(","));
   lines.push(summaryValues.join(","));
@@ -1080,7 +1416,9 @@ function formatMergedCSV(summary: DeletionResultSummary, report: DryRunReportIte
   lines.push(headers.join(","));
 
   for (const item of report) {
-    const sizeMB = item.size != null ? (item.size / (1024 * 1024)).toFixed(2) : "";
+    const sizeMB = item.size != null
+      ? (item.size / (1024 * 1024)).toFixed(2)
+      : "";
     const row = [
       item.operation || "",
       item.assetVersionId || "",
@@ -1103,8 +1441,8 @@ function formatMergedCSV(summary: DeletionResultSummary, report: DryRunReportIte
 function sanitizeCsv(value?: string): string {
   if (!value && value !== "") return "";
   const str = String(value);
-  if (str.includes(",") || str.includes("\n") || str.includes("\"")) {
+  if (str.includes(",") || str.includes("\n") || str.includes('"')) {
     return '"' + str.replace(/"/g, '""') + '"';
-    }
+  }
   return str;
 }

@@ -2,7 +2,13 @@ import { Session } from "@ftrack/api";
 import { Input } from "@cliffy/prompt";
 import chalk from "chalk";
 import { debug } from "../utils/debug.ts";
-import { createProgressTracker, formatProgress, getETA, completeProgress, type ProgressTracker } from "../utils/progress.ts";
+import {
+  completeProgress,
+  createProgressTracker,
+  formatProgress,
+  getETA,
+  type ProgressTracker,
+} from "../utils/progress.ts";
 import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
@@ -11,23 +17,25 @@ import { QueryService } from "../services/queries.ts";
 function updateProgressWithBold(tracker: ProgressTracker, item?: string): void {
   tracker.current++;
   tracker.lastUpdate = Date.now();
-  
+
   const progress = formatProgress(tracker.current, tracker.total);
-  const eta = tracker.current < tracker.total ? ` (ETA: ${getETA(tracker)})` : '';
-  const itemText = item ? `: ${item}` : '';
-  
+  const eta = tracker.current < tracker.total
+    ? ` (ETA: ${getETA(tracker)})`
+    : "";
+  const itemText = item ? `: ${item}` : "";
+
   console.log(chalk.bold(`[${progress}]${eta} Processing${itemText}`));
 }
 
 export async function propagateThumbnails(
-  session: Session, 
+  session: Session,
   projectContextService: ProjectContextService,
   queryService: QueryService,
-  shotId?: string
+  shotId?: string,
 ): Promise<void> {
   const projectContext = projectContextService.getContext();
-  const contextDisplay = projectContext.isGlobal 
-    ? "all projects" 
+  const contextDisplay = projectContext.isGlobal
+    ? "all projects"
     : `project "${projectContext.project?.name}"`;
 
   try {
@@ -41,15 +49,15 @@ export async function propagateThumbnails(
 
     // Build project-scoped query for shots
     const additionalFilters = shotId ? `id is "${shotId}"` : "";
-    
+
     debug(`Querying shots with filters: ${additionalFilters}`);
     const shotsResponse = await withErrorHandling(
       () => queryService.queryShots(additionalFilters),
       {
-        operation: 'fetch shots for thumbnail propagation',
-        entity: 'Shot',
-        additionalData: { shotId, contextDisplay }
-      }
+        operation: "fetch shots for thumbnail propagation",
+        entity: "Shot",
+        additionalData: { shotId, contextDisplay },
+      },
     );
 
     if (!shotsResponse?.data) {
@@ -58,9 +66,11 @@ export async function propagateThumbnails(
     }
 
     const shots = shotsResponse.data;
-    
+
     debug(`Found ${shots.length} shots to process in ${contextDisplay}`);
-    console.log(chalk.blue(`Processing ${shots.length} shots in ${contextDisplay}`));
+    console.log(
+      chalk.blue(`Processing ${shots.length} shots in ${contextDisplay}`),
+    );
 
     // Sort shots alphabetically by name (A-Z)
     shots.sort((a: unknown, b: unknown) => {
@@ -78,77 +88,120 @@ export async function propagateThumbnails(
 
       // Get latest version with thumbnail for this shot using QueryService
       const versionsResponse = await withErrorHandling(
-        () => queryService.queryAssetVersions(
-          `components any (version.asset.parent.id is "${shot.id}") and thumbnail_id != null`
-        ),
+        () =>
+          queryService.queryAssetVersions(
+            `components any (version.asset.parent.id is "${shot.id}") and thumbnail_id != null`,
+          ),
         {
-          operation: 'fetch versions with thumbnails',
-          entity: 'AssetVersion',
-          additionalData: { shotId: shot.id, shotName: shot.name, contextDisplay }
-        }
+          operation: "fetch versions with thumbnails",
+          entity: "AssetVersion",
+          additionalData: {
+            shotId: shot.id,
+            shotName: shot.name,
+            contextDisplay,
+          },
+        },
       );
 
       if (versionsResponse?.data && versionsResponse.data.length > 0) {
         // Sort by date and version to get the latest
-        const sortedVersions = versionsResponse.data.sort((a: unknown, b: unknown) => {
-          const versionA = a as { date?: string; version?: number };
-          const versionB = b as { date?: string; version?: number };
-          const dateA = new Date(versionA.date || 0).getTime();
-          const dateB = new Date(versionB.date || 0).getTime();
-          if (dateA !== dateB) return dateB - dateA; // Latest date first
-          return (versionB.version || 0) - (versionA.version || 0); // Highest version first
-        });
+        const sortedVersions = versionsResponse.data.sort(
+          (a: unknown, b: unknown) => {
+            const versionA = a as { date?: string; version?: number };
+            const versionB = b as { date?: string; version?: number };
+            const dateA = new Date(versionA.date || 0).getTime();
+            const dateB = new Date(versionB.date || 0).getTime();
+            if (dateA !== dateB) return dateB - dateA; // Latest date first
+            return (versionB.version || 0) - (versionA.version || 0); // Highest version first
+          },
+        );
 
         const latestVersionData = sortedVersions[0];
-        const latestVersion = latestVersionData as { id: string; version: number; thumbnail_id: string; date?: string };
-        
+        const latestVersion = latestVersionData as {
+          id: string;
+          version: number;
+          thumbnail_id: string;
+          date?: string;
+        };
+
         if (latestVersion.thumbnail_id) {
           debug(
             `Found latest version: v${latestVersion.version} (${latestVersion.id}) with thumbnail ${latestVersion.thumbnail_id} for shot ${shot.name}`,
           );
-          
+
           // Check if shot already has this thumbnail to avoid unnecessary updates
           const shotDetailsResponse = await withErrorHandling(
-            () => session.query(`select thumbnail_id from Shot where id is "${shot.id}"`),
+            () =>
+              session.query(
+                `select thumbnail_id from Shot where id is "${shot.id}"`,
+              ),
             {
-              operation: 'fetch shot thumbnail details',
-              entity: 'Shot',
-              additionalData: { shotId: shot.id, shotName: shot.name, contextDisplay }
-            }
+              operation: "fetch shot thumbnail details",
+              entity: "Shot",
+              additionalData: {
+                shotId: shot.id,
+                shotName: shot.name,
+                contextDisplay,
+              },
+            },
           );
-          
-          const currentThumbnailId = shotDetailsResponse?.data?.[0]?.thumbnail_id;
-          
+
+          const currentThumbnailId = shotDetailsResponse?.data?.[0]
+            ?.thumbnail_id;
+
           if (currentThumbnailId === latestVersion.thumbnail_id) {
-            console.log(chalk.hex('#808080')(`    ✓ Shot ${shot.name} already has the latest thumbnail (v${latestVersion.version})`));
-            debug(`Shot ${shot.name} already has thumbnail ${latestVersion.thumbnail_id}, skipping update`);
+            console.log(
+              chalk.hex("#808080")(
+                `    ✓ Shot ${shot.name} already has the latest thumbnail (v${latestVersion.version})`,
+              ),
+            );
+            debug(
+              `Shot ${shot.name} already has thumbnail ${latestVersion.thumbnail_id}, skipping update`,
+            );
           } else {
             await withErrorHandling(
-              () => session.update("Shot", [shot.id], {
-                thumbnail_id: latestVersion.thumbnail_id,
-              }),
+              () =>
+                session.update("Shot", [shot.id], {
+                  thumbnail_id: latestVersion.thumbnail_id,
+                }),
               {
-                operation: 'update shot thumbnail',
-                entity: 'Shot',
+                operation: "update shot thumbnail",
+                entity: "Shot",
                 entityId: shot.id,
-                additionalData: { thumbnailId: latestVersion.thumbnail_id, version: latestVersion.version, contextDisplay }
-              }
+                additionalData: {
+                  thumbnailId: latestVersion.thumbnail_id,
+                  version: latestVersion.version,
+                  contextDisplay,
+                },
+              },
             );
-            console.log(chalk.hex('#2D5016')(`    ✓ Updated thumbnail for shot: ${shot.name} (from version ${latestVersion.version})`));
-            debug(`Updated thumbnail for shot ${shot.name} from version ${latestVersion.version}, thumbnail_id: ${latestVersion.thumbnail_id}`);
+            console.log(
+              chalk.hex("#2D5016")(
+                `    ✓ Updated thumbnail for shot: ${shot.name} (from version ${latestVersion.version})`,
+              ),
+            );
+            debug(
+              `Updated thumbnail for shot ${shot.name} from version ${latestVersion.version}, thumbnail_id: ${latestVersion.thumbnail_id}`,
+            );
           }
         }
       } else {
-        console.log(chalk.hex('#808080')(`    ⚠ No versions with thumbnails found for shot: ${shot.name}`));
-        debug(`No versions with thumbnails found for shot: ${shot.name} (${shot.id})`);
+        console.log(
+          chalk.hex("#808080")(
+            `    ⚠ No versions with thumbnails found for shot: ${shot.name}`,
+          ),
+        );
+        debug(
+          `No versions with thumbnails found for shot: ${shot.name} (${shot.id})`,
+        );
       }
     }
 
-    completeProgress(progressTracker, 'Thumbnail propagation');
+    completeProgress(progressTracker, "Thumbnail propagation");
   } catch (error: unknown) {
     handleError(error, {
-      operation: 'propagate thumbnails',
-      additionalData: { shotId, contextDisplay }
+      operation: "propagate thumbnails",
+      additionalData: { shotId, contextDisplay },
     });
     throw error;
   }

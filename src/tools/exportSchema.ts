@@ -6,7 +6,7 @@ import yaml from "js-yaml";
 import { createObjectCsvWriter } from "csv-writer";
 import type { Session } from "@ftrack/api";
 import { debug } from "../utils/debug.ts";
-import { Select } from '@cliffy/prompt';
+import { Select } from "@cliffy/prompt";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
 
@@ -61,14 +61,14 @@ const _ENTITY_TYPES = [
 
 async function generateSchema(
   session: Session,
-  projectContextService: ProjectContextService
+  projectContextService: ProjectContextService,
 ): Promise<Schema> {
   debug("Starting schema generation...");
   const schema: Schema = {};
 
   const projectContext = projectContextService.getContext();
-  const contextDisplay = projectContext.isGlobal 
-    ? "all projects" 
+  const contextDisplay = projectContext.isGlobal
+    ? "all projects"
     : `project "${projectContext.project?.name}"`;
 
   try {
@@ -76,15 +76,15 @@ async function generateSchema(
     const entityTypesResponse = await withErrorHandling(
       () => session.query("select id, name from ObjectType"),
       {
-        operation: 'fetch entity types',
-        entity: 'ObjectType'
-      }
+        operation: "fetch entity types",
+        entity: "ObjectType",
+      },
     );
 
     if (!entityTypesResponse || !entityTypesResponse.data) {
       throw new Error("Failed to fetch entity types");
     }
-    
+
     console.log(`\nGenerating schema for ${contextDisplay}...`);
     debug(`Found ${entityTypesResponse.data.length} entity types`);
 
@@ -100,62 +100,67 @@ async function generateSchema(
       try {
         // Add common base fields that exist for most entity types
         const commonBaseFields = {
-          'id': { type: 'string', required: true },
-          'name': { type: 'string', required: false },
-          'created_date': { type: 'datetime', required: false },
-          'updated_date': { type: 'datetime', required: false }
+          "id": { type: "string", required: true },
+          "name": { type: "string", required: false },
+          "created_date": { type: "datetime", required: false },
+          "updated_date": { type: "datetime", required: false },
         };
-        
+
         // Add entity-specific base fields
-        const entitySpecificFields: Record<string, Record<string, SchemaField>> = {
-          'Project': {
-            'full_name': { type: 'string', required: false },
-            'status': { type: 'string', required: false },
-            'start_date': { type: 'date', required: false },
-            'end_date': { type: 'date', required: false }
+        const entitySpecificFields: Record<
+          string,
+          Record<string, SchemaField>
+        > = {
+          "Project": {
+            "full_name": { type: "string", required: false },
+            "status": { type: "string", required: false },
+            "start_date": { type: "date", required: false },
+            "end_date": { type: "date", required: false },
           },
-          'Shot': {
-            'status': { type: 'string', required: false },
-            'priority': { type: 'string', required: false },
-            'description': { type: 'text', required: false }
+          "Shot": {
+            "status": { type: "string", required: false },
+            "priority": { type: "string", required: false },
+            "description": { type: "text", required: false },
           },
-          'Task': {
-            'status': { type: 'string', required: false },
-            'priority': { type: 'string', required: false },
-            'bid': { type: 'number', required: false },
-            'type': { type: 'string', required: false }
+          "Task": {
+            "status": { type: "string", required: false },
+            "priority": { type: "string", required: false },
+            "bid": { type: "number", required: false },
+            "type": { type: "string", required: false },
           },
-          'AssetVersion': {
-            'version': { type: 'number', required: false },
-            'comment': { type: 'text', required: false },
-            'is_latest_version': { type: 'boolean', required: false }
+          "AssetVersion": {
+            "version": { type: "number", required: false },
+            "comment": { type: "text", required: false },
+            "is_latest_version": { type: "boolean", required: false },
           },
-          'User': {
-            'username': { type: 'string', required: false },
-            'email': { type: 'string', required: false },
-            'first_name': { type: 'string', required: false },
-            'last_name': { type: 'string', required: false }
-          }
+          "User": {
+            "username": { type: "string", required: false },
+            "email": { type: "string", required: false },
+            "first_name": { type: "string", required: false },
+            "last_name": { type: "string", required: false },
+          },
         };
-        
+
         // Merge common and entity-specific fields
         schema[entityType.name].baseFields = {
           ...commonBaseFields,
-          ...(entitySpecificFields[entityType.name] || {})
+          ...(entitySpecificFields[entityType.name] || {}),
         };
-        
       } catch (schemaError) {
-        debug(`Could not set base fields for ${entityType.name}: ${schemaError}`);
+        debug(
+          `Could not set base fields for ${entityType.name}: ${schemaError}`,
+        );
         // Set minimal base fields as fallback
         schema[entityType.name].baseFields = {
-          'id': { type: 'string', required: true },
-          'name': { type: 'string', required: false }
+          "id": { type: "string", required: true },
+          "name": { type: "string", required: false },
         };
       }
 
       // Get custom attributes for this entity type
       const customAttributesResponse = await withErrorHandling(
-        () => session.query(`
+        () =>
+          session.query(`
           select 
             id,
             key,
@@ -167,10 +172,10 @@ async function generateSchema(
           where entity_type="${entityType.name}"
         `),
         {
-          operation: 'fetch custom attributes',
-          entity: 'CustomAttributeConfiguration',
-          additionalData: { entityType: entityType.name }
-        }
+          operation: "fetch custom attributes",
+          entity: "CustomAttributeConfiguration",
+          additionalData: { entityType: entityType.name },
+        },
       );
 
       // Process custom attributes
@@ -198,8 +203,8 @@ async function generateSchema(
     return schema;
   } catch (error) {
     handleError(error, {
-      operation: 'generate schema',
-      additionalData: { contextDisplay: contextDisplay }
+      operation: "generate schema",
+      additionalData: { contextDisplay: contextDisplay },
     });
     throw error;
   }
@@ -422,7 +427,7 @@ export async function exportSchema(
         options: [
           { name: "Export in another format", value: "export_again" },
           { name: "Return to main menu", value: "main_menu" },
-        ]
+        ],
       });
 
       if (nextAction === "export_again") {
@@ -433,9 +438,14 @@ export async function exportSchema(
             { name: "Export to YAML", value: "yaml" },
             { name: "Export to CSV", value: "csv" },
             { name: "Generate TypeScript (.ts) file", value: "ts" },
-          ].filter((choice) => choice.value !== format) // Remove current format from choices
+          ].filter((choice) => choice.value !== format), // Remove current format from choices
         });
-        return exportSchema(session, projectContextService, newFormat as "json" | "yaml" | "csv" | "ts", interactive);
+        return exportSchema(
+          session,
+          projectContextService,
+          newFormat as "json" | "yaml" | "csv" | "ts",
+          interactive,
+        );
       }
     }
 

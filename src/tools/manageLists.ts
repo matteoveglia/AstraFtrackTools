@@ -1,12 +1,12 @@
 /**
  * Manages ftrack Lists with comprehensive functionality
- * 
+ *
  * This tool allows users to:
  * 1. Create new lists with category selection
  * 2. Delete existing lists with confirmation
  * 3. Add shots to lists (existing functionality)
  * 4. Browse lists with pagination for better performance
- * 
+ *
  * Features:
  * - Mode selection for different operations
  * - Lists are visually grouped by their categories with pagination
@@ -15,23 +15,23 @@
  * - Confirmation prompts for destructive operations
  */
 
-import { Session } from '@ftrack/api';
-import { Select, Input, Confirm } from '@cliffy/prompt';
-import chalk from 'chalk';
-import type { 
+import { Session } from "@ftrack/api";
+import { Confirm, Input, Select } from "@cliffy/prompt";
+import chalk from "chalk";
+import type {
   List,
   ListCategory,
+  ListObject,
   Shot,
-  ListObject
-} from '../schemas/schema.ts';
-import { debug } from '../utils/debug.ts';
-import type { ProjectContextService } from '../services/projectContext.ts';
+} from "../schemas/schema.ts";
+import { debug } from "../utils/debug.ts";
+import type { ProjectContextService } from "../services/projectContext.ts";
 
 // Constants for pagination
 const LISTS_PER_PAGE = 20;
 
 // Operation modes
-type OperationMode = 'add_shots' | 'create_list' | 'delete_list';
+type OperationMode = "add_shots" | "create_list" | "delete_list";
 
 interface PaginatedListDisplay {
   choices: string[];
@@ -43,42 +43,41 @@ interface PaginatedListDisplay {
 
 export async function manageLists(
   session: Session,
-  projectContextService: ProjectContextService
+  projectContextService: ProjectContextService,
 ): Promise<void> {
   try {
-    debug('Starting manageLists process');
+    debug("Starting manageLists process");
 
     const projectContext = projectContextService.getContext();
-    const contextInfo = projectContext.isGlobal 
-      ? "all projects (site-wide)" 
+    const contextInfo = projectContext.isGlobal
+      ? "all projects (site-wide)"
       : `project "${projectContext.project?.name}"`;
-    
+
     console.log(chalk.blue(`\nManaging lists for: ${contextInfo}\n`));
 
     // Mode selection
     const mode = await Select.prompt({
-      message: 'What would you like to do?',
+      message: "What would you like to do?",
       options: [
-        { name: '📝 Add shots to a list', value: 'add_shots' },
-        { name: '➕ Create a new list', value: 'create_list' },
-        { name: '🗑️  Delete a list', value: 'delete_list' }
-      ]
+        { name: "📝 Add shots to a list", value: "add_shots" },
+        { name: "➕ Create a new list", value: "create_list" },
+        { name: "🗑️  Delete a list", value: "delete_list" },
+      ],
     });
 
     switch (mode) {
-      case 'add_shots':
+      case "add_shots":
         await handleAddShots(session, projectContextService);
         break;
-      case 'create_list':
+      case "create_list":
         await handleCreateList(session, projectContextService);
         break;
-      case 'delete_list':
+      case "delete_list":
         await handleDeleteList(session, projectContextService);
         break;
     }
-    
   } catch (error) {
-    console.error('Error during list management:', error);
+    console.error("Error during list management:", error);
     throw error;
   }
 }
@@ -87,8 +86,8 @@ export async function manageLists(
  * Fetches and organizes lists by category
  */
 async function fetchAndOrganizeLists(
-  session: Session, 
-  projectContextService: ProjectContextService
+  session: Session,
+  projectContextService: ProjectContextService,
 ): Promise<Record<string, List[]>> {
   // Build project-scoped query for lists
   const listsQuery = projectContextService.buildProjectScopedQuery(`
@@ -99,14 +98,14 @@ async function fetchAndOrganizeLists(
 
   const listsResponse = await session.query(listsQuery);
   const allLists = (listsResponse.data || []) as List[];
-  
+
   debug(`Found ${allLists.length} total lists`);
 
   // Group lists by category
   const listsByCategory: Record<string, List[]> = {};
-  
-  allLists.forEach(list => {
-    const categoryName = list.category?.name || 'Uncategorized';
+
+  allLists.forEach((list) => {
+    const categoryName = list.category?.name || "Uncategorized";
     if (!listsByCategory[categoryName]) {
       listsByCategory[categoryName] = [];
     }
@@ -114,9 +113,9 @@ async function fetchAndOrganizeLists(
   });
 
   // Sort lists within each category
-  Object.keys(listsByCategory).forEach(categoryName => {
-    listsByCategory[categoryName].sort((a, b) => 
-      (a.name || '').localeCompare(b.name || '')
+  Object.keys(listsByCategory).forEach((categoryName) => {
+    listsByCategory[categoryName].sort((a, b) =>
+      (a.name || "").localeCompare(b.name || "")
     );
   });
 
@@ -126,30 +125,32 @@ async function fetchAndOrganizeLists(
 /**
  * Displays categories and allows user to select one
  */
-async function selectCategory(listsByCategory: Record<string, List[]>): Promise<string | null> {
+async function selectCategory(
+  listsByCategory: Record<string, List[]>,
+): Promise<string | null> {
   const categoryNames = Object.keys(listsByCategory).sort();
-  
+
   if (categoryNames.length === 0) {
-    console.log(chalk.yellow('No categories found.'));
+    console.log(chalk.yellow("No categories found."));
     return null;
   }
 
-  const categoryChoices = categoryNames.map(categoryName => {
+  const categoryChoices = categoryNames.map((categoryName) => {
     const listCount = listsByCategory[categoryName].length;
     return {
-      name: `${categoryName} (${listCount} list${listCount !== 1 ? 's' : ''})`,
-      value: categoryName
+      name: `${categoryName} (${listCount} list${listCount !== 1 ? "s" : ""})`,
+      value: categoryName,
     };
   });
 
-  categoryChoices.push({ name: '❌ Cancel', value: 'CANCEL' });
+  categoryChoices.push({ name: "❌ Cancel", value: "CANCEL" });
 
   const selectedCategory = await Select.prompt({
-    message: 'Select a category to view lists:',
-    options: categoryChoices
+    message: "Select a category to view lists:",
+    options: categoryChoices,
   });
 
-  return selectedCategory === 'CANCEL' ? null : selectedCategory;
+  return selectedCategory === "CANCEL" ? null : selectedCategory;
 }
 
 /**
@@ -158,7 +159,7 @@ async function selectCategory(listsByCategory: Record<string, List[]>): Promise<
 interface ListSelectionChoice {
   id: string | null;
   name: string | null;
-  action: 'select' | 'prev' | 'next' | 'back' | 'cancel';
+  action: "select" | "prev" | "next" | "back" | "cancel";
 }
 
 /**
@@ -167,7 +168,7 @@ interface ListSelectionChoice {
 interface ListSelectionResult {
   listId: string | null;
   listName: string | null;
-  action: 'select' | 'prev' | 'next' | 'back' | 'cancel';
+  action: "select" | "prev" | "next" | "back" | "cancel";
 }
 
 /**
@@ -176,43 +177,63 @@ interface ListSelectionResult {
 async function selectListFromCategory(
   categoryName: string,
   lists: List[],
-  page: number = 1
+  page: number = 1,
 ): Promise<ListSelectionResult> {
   const totalPages = Math.ceil(lists.length / LISTS_PER_PAGE);
   const startIndex = (page - 1) * LISTS_PER_PAGE;
   const endIndex = startIndex + LISTS_PER_PAGE;
   const pageItems = lists.slice(startIndex, endIndex);
 
-  const choices: { name: string; value: ListSelectionChoice }[] = pageItems.map(list => {
-    const displayName = `${list.name} (${list.project?.name || 'No Project'})`;
-    return {
-      name: displayName,
-      value: { id: list.id, name: list.name || null, action: 'select' as const }
-    };
-  });
+  const choices: { name: string; value: ListSelectionChoice }[] = pageItems.map(
+    (list) => {
+      const displayName = `${list.name} (${
+        list.project?.name || "No Project"
+      })`;
+      return {
+        name: displayName,
+        value: {
+          id: list.id,
+          name: list.name || null,
+          action: "select" as const,
+        },
+      };
+    },
+  );
 
   // Add navigation options
   if (page > 1) {
-    choices.push({ name: '⬅️  Previous page', value: { id: null, name: null, action: 'prev' as const } });
+    choices.push({
+      name: "⬅️  Previous page",
+      value: { id: null, name: null, action: "prev" as const },
+    });
   }
   if (page < totalPages) {
-    choices.push({ name: '➡️  Next page', value: { id: null, name: null, action: 'next' as const } });
+    choices.push({
+      name: "➡️  Next page",
+      value: { id: null, name: null, action: "next" as const },
+    });
   }
-  
-  choices.push({ name: '⬅️  Back to categories', value: { id: null, name: null, action: 'back' as const } });
-  choices.push({ name: '❌ Cancel', value: { id: null, name: null, action: 'cancel' as const } });
 
-  const pageInfo = totalPages > 1 ? ` (Page ${page}/${totalPages})` : '';
+  choices.push({
+    name: "⬅️  Back to categories",
+    value: { id: null, name: null, action: "back" as const },
+  });
+  choices.push({
+    name: "❌ Cancel",
+    value: { id: null, name: null, action: "cancel" as const },
+  });
+
+  const pageInfo = totalPages > 1 ? ` (Page ${page}/${totalPages})` : "";
 
   const selection = await Select.prompt({
     message: `Select a list from "${categoryName}"${pageInfo}:`,
-    options: choices
+    options: choices,
   });
 
   return {
     listId: selection.id,
     listName: selection.name,
-    action: selection.action
+    action: selection.action,
   };
 }
 
@@ -221,24 +242,27 @@ async function selectListFromCategory(
  */
 async function handleAddShots(
   session: Session,
-  projectContextService: ProjectContextService
+  projectContextService: ProjectContextService,
 ): Promise<void> {
   let selectedListId: string | null = null;
   let selectedListName: string | null = null;
 
   while (!selectedListId) {
     // First, get all lists organized by category
-    const listsByCategory = await fetchAndOrganizeLists(session, projectContextService);
-    
+    const listsByCategory = await fetchAndOrganizeLists(
+      session,
+      projectContextService,
+    );
+
     if (Object.keys(listsByCategory).length === 0) {
-      console.log(chalk.yellow('No lists found.'));
+      console.log(chalk.yellow("No lists found."));
       return;
     }
 
     // Let user select a category
     const selectedCategory = await selectCategory(listsByCategory);
     if (!selectedCategory) {
-      console.log(chalk.yellow('Operation cancelled.'));
+      console.log(chalk.yellow("Operation cancelled."));
       return;
     }
 
@@ -248,25 +272,29 @@ async function handleAddShots(
     let categorySelection = false;
 
     while (!categorySelection) {
-      const result = await selectListFromCategory(selectedCategory, categoryLists, currentPage);
-      
+      const result = await selectListFromCategory(
+        selectedCategory,
+        categoryLists,
+        currentPage,
+      );
+
       switch (result.action) {
-        case 'select':
+        case "select":
           selectedListId = result.listId;
           selectedListName = result.listName;
           categorySelection = true;
           break;
-        case 'next':
+        case "next":
           currentPage++;
           break;
-        case 'prev':
+        case "prev":
           currentPage--;
           break;
-        case 'back':
+        case "back":
           categorySelection = true; // Go back to category selection
           break;
-        case 'cancel':
-          console.log(chalk.yellow('Operation cancelled.'));
+        case "cancel":
+          console.log(chalk.yellow("Operation cancelled."));
           return;
       }
     }
@@ -277,9 +305,14 @@ async function handleAddShots(
   }
 
   console.log(chalk.green(`\nSelected list: ${selectedListName}`));
-  
+
   // Continue with shot addition logic
-  await addShotsToList(session, projectContextService, selectedListId, selectedListName);
+  await addShotsToList(
+    session,
+    projectContextService,
+    selectedListId,
+    selectedListName,
+  );
 }
 
 /**
@@ -287,9 +320,9 @@ async function handleAddShots(
  */
 async function handleCreateList(
   session: Session,
-  projectContextService: ProjectContextService
+  projectContextService: ProjectContextService,
 ): Promise<void> {
-  console.log(chalk.blue('\n📝 Creating a new list\n'));
+  console.log(chalk.blue("\n📝 Creating a new list\n"));
 
   // Fetch list categories
   const categoriesResponse = await session.query(`
@@ -299,28 +332,32 @@ async function handleCreateList(
   `);
 
   if (!categoriesResponse.data || categoriesResponse.data.length === 0) {
-    console.log(chalk.yellow('No list categories found. Cannot create a list without a category.'));
+    console.log(
+      chalk.yellow(
+        "No list categories found. Cannot create a list without a category.",
+      ),
+    );
     return;
   }
 
   const categories = categoriesResponse.data as ListCategory[];
-  
+
   // Get list name with duplicate checking loop
-  let trimmedName: string = '';
+  let trimmedName: string = "";
   let isNameValid = false;
-  
+
   while (!isNameValid) {
     const listName = await Input.prompt({
-      message: 'Enter the name for the new list:',
+      message: "Enter the name for the new list:",
       validate: (input: string) => {
         if (!input.trim()) {
-          return 'List name cannot be empty';
+          return "List name cannot be empty";
         }
         if (input.trim().length > 100) {
-          return 'List name must be 100 characters or less';
+          return "List name must be 100 characters or less";
         }
         return true;
-      }
+      },
     });
 
     trimmedName = listName.trim();
@@ -331,22 +368,26 @@ async function handleCreateList(
       from List
       where name is "${trimmedName}"
     `);
-    
+
     const existingListResponse = await session.query(existingListQuery);
-    
+
     if (existingListResponse.data && existingListResponse.data.length > 0) {
-      console.log(chalk.red(`\nA list named "${trimmedName}" already exists in the current context.`));
-      
+      console.log(
+        chalk.red(
+          `\nA list named "${trimmedName}" already exists in the current context.`,
+        ),
+      );
+
       const action = await Select.prompt({
-        message: 'What would you like to do?',
+        message: "What would you like to do?",
         options: [
-          { name: '✏️  Enter a different name', value: 'retry' },
-          { name: '❌ Cancel list creation', value: 'cancel' }
-        ]
+          { name: "✏️  Enter a different name", value: "retry" },
+          { name: "❌ Cancel list creation", value: "cancel" },
+        ],
       });
 
-      if (action === 'cancel') {
-        console.log(chalk.yellow('List creation cancelled.'));
+      if (action === "cancel") {
+        console.log(chalk.yellow("List creation cancelled."));
         return;
       }
       // If 'retry', continue the loop to ask for a new name
@@ -356,20 +397,20 @@ async function handleCreateList(
   }
 
   // Select category
-  const categoryChoices = categories.map(cat => ({
-    name: cat.name || 'Unnamed Category',
-    value: cat.id
+  const categoryChoices = categories.map((cat) => ({
+    name: cat.name || "Unnamed Category",
+    value: cat.id,
   }));
 
   const categoryId = await Select.prompt({
-    message: 'Select a category for the new list:',
-    options: categoryChoices
+    message: "Select a category for the new list:",
+    options: categoryChoices,
   });
 
   // Get project ID for the list
   const projectContext = projectContextService.getContext();
   let projectId: string | undefined;
-  
+
   if (!projectContext.isGlobal && projectContext.project) {
     projectId = projectContext.project.id;
   } else {
@@ -380,63 +421,71 @@ async function handleCreateList(
       where status is "Active"
       order by name
     `);
-    
+
     if (!projectsResponse.data || projectsResponse.data.length === 0) {
-      console.log(chalk.red('No active projects found.'));
+      console.log(chalk.red("No active projects found."));
       return;
     }
 
-    const projectChoices = (projectsResponse.data as { id: string; name: string; full_name: string }[]).map((project) => ({
+    const projectChoices = (projectsResponse.data as {
+      id: string;
+      name: string;
+      full_name: string;
+    }[]).map((project) => ({
       name: `${project.name} (${project.full_name})`,
-      value: project.id
+      value: project.id,
     }));
 
     const selectedProjectId = await Select.prompt({
-      message: 'Select a project for the new list:',
-      options: projectChoices
+      message: "Select a project for the new list:",
+      options: projectChoices,
     });
 
     projectId = selectedProjectId;
   }
 
   if (!projectId) {
-    console.log(chalk.red('No project selected. Cannot create list.'));
+    console.log(chalk.red("No project selected. Cannot create list."));
     return;
   }
 
   // Confirm creation
-  const selectedCategory = categories.find(cat => cat.id === categoryId);
+  const selectedCategory = categories.find((cat) => cat.id === categoryId);
   const confirm = await Confirm.prompt({
-    message: `Create list "${trimmedName}" in category "${selectedCategory?.name}"?`,
-    default: true
+    message:
+      `Create list "${trimmedName}" in category "${selectedCategory?.name}"?`,
+    default: true,
   });
 
   if (!confirm) {
-    console.log(chalk.yellow('List creation cancelled.'));
+    console.log(chalk.yellow("List creation cancelled."));
     return;
   }
 
   // Create the list
   try {
     const createOperation = {
-      action: 'create',
-      entity_type: 'List',
+      action: "create",
+      entity_type: "List",
       entity_data: {
         name: trimmedName,
         category_id: categoryId,
         project_id: projectId,
-        is_open: true
-      }
+        is_open: true,
+      },
     };
 
     debug(`Creating list with data: ${JSON.stringify(createOperation)}`);
     const result = await session.call([createOperation]);
     debug(`Create list result: ${JSON.stringify(result)}`);
 
-    console.log(chalk.green(`\n✅ Successfully created list "${trimmedName}" in category "${selectedCategory?.name}"`));
-    
+    console.log(
+      chalk.green(
+        `\n✅ Successfully created list "${trimmedName}" in category "${selectedCategory?.name}"`,
+      ),
+    );
   } catch (error) {
-    console.error(chalk.red('\n❌ Failed to create list:'), error);
+    console.error(chalk.red("\n❌ Failed to create list:"), error);
     throw error;
   }
 }
@@ -446,27 +495,30 @@ async function handleCreateList(
  */
 async function handleDeleteList(
   session: Session,
-  projectContextService: ProjectContextService
+  projectContextService: ProjectContextService,
 ): Promise<void> {
-  console.log(chalk.red('\n🗑️  Deleting a list\n'));
-  console.log(chalk.yellow('⚠️  Warning: This action cannot be undone!\n'));
+  console.log(chalk.red("\n🗑️  Deleting a list\n"));
+  console.log(chalk.yellow("⚠️  Warning: This action cannot be undone!\n"));
 
   let selectedListId: string | null = null;
   let selectedListName: string | null = null;
 
   while (!selectedListId) {
     // First, get all lists organized by category
-    const listsByCategory = await fetchAndOrganizeLists(session, projectContextService);
-    
+    const listsByCategory = await fetchAndOrganizeLists(
+      session,
+      projectContextService,
+    );
+
     if (Object.keys(listsByCategory).length === 0) {
-      console.log(chalk.yellow('No lists found.'));
+      console.log(chalk.yellow("No lists found."));
       return;
     }
 
     // Let user select a category
     const selectedCategory = await selectCategory(listsByCategory);
     if (!selectedCategory) {
-      console.log(chalk.yellow('Operation cancelled.'));
+      console.log(chalk.yellow("Operation cancelled."));
       return;
     }
 
@@ -476,25 +528,29 @@ async function handleDeleteList(
     let categorySelection = false;
 
     while (!categorySelection) {
-      const result = await selectListFromCategory(selectedCategory, categoryLists, currentPage);
-      
+      const result = await selectListFromCategory(
+        selectedCategory,
+        categoryLists,
+        currentPage,
+      );
+
       switch (result.action) {
-        case 'select':
+        case "select":
           selectedListId = result.listId;
           selectedListName = result.listName;
           categorySelection = true;
           break;
-        case 'next':
+        case "next":
           currentPage++;
           break;
-        case 'prev':
+        case "prev":
           currentPage--;
           break;
-        case 'back':
+        case "back":
           categorySelection = true; // Go back to category selection
           break;
-        case 'cancel':
-          console.log(chalk.yellow('Operation cancelled.'));
+        case "cancel":
+          console.log(chalk.yellow("Operation cancelled."));
           return;
       }
     }
@@ -522,9 +578,13 @@ async function handleDeleteList(
 
   console.log(chalk.red(`\n⚠️  You are about to delete:`));
   console.log(`   List: ${listDetails?.name || selectedListName}`);
-  console.log(`   Category: ${listDetails?.category?.name || 'Unknown'}`);
+  console.log(`   Category: ${listDetails?.category?.name || "Unknown"}`);
   console.log(`   Items in list: ${itemCount}`);
-  console.log(chalk.red('\n   This will permanently delete the list and all its associations!'));
+  console.log(
+    chalk.red(
+      "\n   This will permanently delete the list and all its associations!",
+    ),
+  );
 
   // Double confirmation
   await Input.prompt({
@@ -534,35 +594,36 @@ async function handleDeleteList(
         return `You must type "${selectedListName}" exactly to confirm`;
       }
       return true;
-    }
+    },
   });
 
   const finalConfirm = await Confirm.prompt({
-    message: chalk.red('Are you absolutely sure you want to delete this list?'),
-    default: false
+    message: chalk.red("Are you absolutely sure you want to delete this list?"),
+    default: false,
   });
 
   if (!finalConfirm) {
-    console.log(chalk.yellow('List deletion cancelled.'));
+    console.log(chalk.yellow("List deletion cancelled."));
     return;
   }
 
   // Delete the list (this will cascade delete ListObjects)
   try {
     const deleteOperation = {
-      action: 'delete',
-      entity_type: 'List',
-      entity_key: selectedListId
+      action: "delete",
+      entity_type: "List",
+      entity_key: selectedListId,
     };
 
     debug(`Deleting list with operation: ${JSON.stringify(deleteOperation)}`);
     const result = await session.call([deleteOperation]);
     debug(`Delete list result: ${JSON.stringify(result)}`);
 
-    console.log(chalk.green(`\n✅ Successfully deleted list "${selectedListName}"`));
-    
+    console.log(
+      chalk.green(`\n✅ Successfully deleted list "${selectedListName}"`),
+    );
   } catch (error) {
-    console.error(chalk.red('\n❌ Failed to delete list:'), error);
+    console.error(chalk.red("\n❌ Failed to delete list:"), error);
     throw error;
   }
 }
@@ -574,93 +635,103 @@ async function addShotsToList(
   session: Session,
   projectContextService: ProjectContextService,
   listId: string,
-  listName: string
+  listName: string,
 ): Promise<void> {
   // Ask user for input mode
   const inputMode = await Select.prompt({
-    message: 'How would you like to input shot codes?',
+    message: "How would you like to input shot codes?",
     options: [
-      { name: '📝 Terminal input (comma-separated)', value: 'terminal' },
-      { name: '📄 Editor (paste list)', value: 'editor' },
-      { name: '❌ Cancel', value: 'cancel' }
-    ]
+      { name: "📝 Terminal input (comma-separated)", value: "terminal" },
+      { name: "📄 Editor (paste list)", value: "editor" },
+      { name: "❌ Cancel", value: "cancel" },
+    ],
   });
 
-  if (inputMode === 'cancel') {
-    console.log(chalk.yellow('Operation cancelled.'));
+  if (inputMode === "cancel") {
+    console.log(chalk.yellow("Operation cancelled."));
     return;
   }
 
   let shotCodes: string;
 
-  if (inputMode === 'terminal') {
+  if (inputMode === "terminal") {
     // Terminal mode - direct input
     const terminalInput = await Input.prompt({
-      message: 'Enter shot codes (comma-separated, e.g., SHOT001, SHOT002, SHOT003):',
+      message:
+        "Enter shot codes (comma-separated, e.g., SHOT001, SHOT002, SHOT003):",
       validate: (input: string) => {
         if (!input.trim()) {
-          return 'Please enter at least one shot code';
+          return "Please enter at least one shot code";
         }
         return true;
-      }
+      },
     });
     shotCodes = terminalInput;
   } else {
     // Editor mode - existing functionality
     const editorInput = await Input.prompt({
-      message: 'Enter shot codes (comma separated or one per line):\nIf this opens Vim, just paste, then type :wq and press Enter\n',
-      default: '',
+      message:
+        "Enter shot codes (comma separated or one per line):\nIf this opens Vim, just paste, then type :wq and press Enter\n",
+      default: "",
       validate: (input: string) => {
         if (!input.trim()) {
-          return 'Please enter at least one shot code, press Enter to open editor';
+          return "Please enter at least one shot code, press Enter to open editor";
         }
         return true;
-      }
+      },
     });
     shotCodes = editorInput;
   }
 
   // Parse shot codes from input (handles comma-separated or line-by-line)
   const parsedCodes = shotCodes
-    .replace(/\r\n/g, '\n')
+    .replace(/\r\n/g, "\n")
     .split(/[\n,]/)
     .map((code: string) => code.trim())
     .filter((code: string) => code.length > 0);
-  
+
   if (parsedCodes.length === 0) {
-    console.log(chalk.yellow('No valid shot codes provided.'));
+    console.log(chalk.yellow("No valid shot codes provided."));
     return;
   }
 
-  debug(`Parsed ${parsedCodes.length} shot codes: ${parsedCodes.join(', ')}`);
+  debug(`Parsed ${parsedCodes.length} shot codes: ${parsedCodes.join(", ")}`);
 
   // Query shots that match the provided codes using project scoping
   const shotQuery = projectContextService.buildProjectScopedQuery(`
     select id, name, parent.name
     from Shot
-    where name in (${parsedCodes.map((code: string) => `"${code}"`).join(',')})
+    where name in (${parsedCodes.map((code: string) => `"${code}"`).join(",")})
   `);
-  
+
   const shotsResponse = await session.query(shotQuery);
   const foundShots = (shotsResponse.data || []) as Shot[];
-  
+
   // Compare found shots against requested codes
-  const foundShotNames = foundShots.map(shot => shot.name);
-  const notFoundCodes = parsedCodes.filter((code: string) => !foundShotNames.includes(code));
-  
+  const foundShotNames = foundShots.map((shot) => shot.name);
+  const notFoundCodes = parsedCodes.filter((code: string) =>
+    !foundShotNames.includes(code)
+  );
+
   if (notFoundCodes.length > 0) {
-    console.log(chalk.yellow(`\nWarning: The following shot codes were not found:`));
-    console.log(notFoundCodes.join(', '));
+    console.log(
+      chalk.yellow(`\nWarning: The following shot codes were not found:`),
+    );
+    console.log(notFoundCodes.join(", "));
   }
 
   if (foundShots.length === 0) {
-    console.log(chalk.red('\nNo matching shots found. Please check the shot codes and try again.'));
+    console.log(
+      chalk.red(
+        "\nNo matching shots found. Please check the shot codes and try again.",
+      ),
+    );
     return;
   }
 
   console.log(chalk.green(`\nFound ${foundShots.length} matching shots:`));
-  foundShots.forEach(shot => {
-    console.log(`- ${shot.name} (${shot.parent?.name || 'No Parent'})`);
+  foundShots.forEach((shot) => {
+    console.log(`- ${shot.name} (${shot.parent?.name || "No Parent"})`);
   });
 
   // Check if shots are already in the list
@@ -669,23 +740,31 @@ async function addShotsToList(
     from ListObject
     where list_id is "${listId}"
   `);
-  
+
   const existingLinks = (existingLinksResponse.data || []) as ListObject[];
-  const existingEntityIds = existingLinks.map(link => link.entity_id);
-  
+  const existingEntityIds = existingLinks.map((link) => link.entity_id);
+
   // Filter out shots that are already in the list
-  const shotsToAdd = foundShots.filter(shot => !existingEntityIds.includes(shot.id));
-  const alreadyLinkedShots = foundShots.filter(shot => existingEntityIds.includes(shot.id));
-  
+  const shotsToAdd = foundShots.filter((shot) =>
+    !existingEntityIds.includes(shot.id)
+  );
+  const alreadyLinkedShots = foundShots.filter((shot) =>
+    existingEntityIds.includes(shot.id)
+  );
+
   if (alreadyLinkedShots.length > 0) {
     console.log(chalk.yellow(`\nThe following shots are already in the list:`));
-    alreadyLinkedShots.forEach(shot => {
+    alreadyLinkedShots.forEach((shot) => {
       console.log(`- ${shot.name}`);
     });
   }
 
   if (shotsToAdd.length === 0) {
-    console.log(chalk.yellow('\nAll found shots are already in the list. No changes needed.'));
+    console.log(
+      chalk.yellow(
+        "\nAll found shots are already in the list. No changes needed.",
+      ),
+    );
     return;
   }
 
@@ -693,37 +772,41 @@ async function addShotsToList(
   const action = await Select.prompt({
     message: `Add ${shotsToAdd.length} shots to list "${listName}"?`,
     options: [
-      { name: 'Yes - Add these shots', value: 'yes' },
-      { name: 'No - Cancel operation', value: 'no' },
-      { name: 'Change/Revise - Modify shot selection', value: 'change' }
+      { name: "Yes - Add these shots", value: "yes" },
+      { name: "No - Cancel operation", value: "no" },
+      { name: "Change/Revise - Modify shot selection", value: "change" },
     ],
-    default: 'yes'
+    default: "yes",
   });
 
-  if (action === 'no') {
-    console.log(chalk.yellow('\nOperation cancelled.'));
+  if (action === "no") {
+    console.log(chalk.yellow("\nOperation cancelled."));
     return;
   }
 
-  if (action === 'change') {
-    console.log(chalk.blue('\nRestarting shot input...'));
+  if (action === "change") {
+    console.log(chalk.blue("\nRestarting shot input..."));
     // Recursively call the function to restart the process
     return addShotsToList(session, projectContextService, listId, listName);
   }
 
   // Create list objects to link shots to the list
-  const operations = shotsToAdd.map(shot => ({
-    action: 'create',
-    entity_type: 'ListObject',
+  const operations = shotsToAdd.map((shot) => ({
+    action: "create",
+    entity_type: "ListObject",
     entity_data: {
       list_id: listId,
-      entity_id: shot.id
-    }
+      entity_id: shot.id,
+    },
   }));
 
   debug(`Creating ${operations.length} links to list ${listId}`);
   const result = await session.call(operations);
   debug(`Create operation result: ${JSON.stringify(result)}`);
 
-  console.log(chalk.green(`\nSuccessfully added ${shotsToAdd.length} shots to list "${listName}"`));
+  console.log(
+    chalk.green(
+      `\nSuccessfully added ${shotsToAdd.length} shots to list "${listName}"`,
+    ),
+  );
 }

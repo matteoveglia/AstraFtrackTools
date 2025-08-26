@@ -1,9 +1,9 @@
-import { Input, Select, Confirm } from "@cliffy/prompt";
+import { Confirm, Input, Select } from "@cliffy/prompt";
 // Removed: import process from "node:process";
 
 import { debugToFile } from "../utils/debug.ts";
 import { loadPreferences } from "../utils/preferences.ts";
-import { withErrorHandling, handleError } from "../utils/errorHandler.ts";
+import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
 import { getDownloadsDirectory } from "../utils/systemPaths.ts";
 
 import { SessionService } from "../services/session.ts";
@@ -13,13 +13,19 @@ import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
 
 import type { Session } from "@ftrack/api";
-import type { AssetVersion, Component, MediaPreference, Shot } from "../types/mediaDownload.ts";
+import type {
+  AssetVersion,
+  Component,
+  MediaPreference,
+  Shot,
+} from "../types/mediaDownload.ts";
 
-const DEBUG_LOG_PATH = "/Users/matteoveglia/Documents/Coding/AstraFtrackTools/downloadMedia_debug.log";
+const DEBUG_LOG_PATH =
+  "/Users/matteoveglia/Documents/Coding/AstraFtrackTools/downloadMedia_debug.log";
 
 /**
  * Download Media Tool - Downloads media files from Ftrack asset versions
- * 
+ *
  * This tool allows users to:
  * - Download from single asset version by ID
  * - Download from multiple shots using fuzzy search
@@ -29,11 +35,11 @@ const DEBUG_LOG_PATH = "/Users/matteoveglia/Documents/Coding/AstraFtrackTools/do
 export async function downloadMediaTool(
   session: Session,
   projectContextService: ProjectContextService,
-  queryService: QueryService
+  queryService: QueryService,
 ): Promise<void> {
   const projectContext = projectContextService.getContext();
-  const contextDisplay = projectContext.isGlobal 
-    ? "all projects" 
+  const contextDisplay = projectContext.isGlobal
+    ? "all projects"
     : `project "${projectContext.project?.name}"`;
 
   console.log(`\n📥 Download Media Tool (${contextDisplay})`);
@@ -42,20 +48,27 @@ export async function downloadMediaTool(
   // Initialize services
   const sessionService = new SessionService(session);
   const componentService = new ComponentService(sessionService, queryService);
-  
+
   // Get authentication headers for downloads as fallback
   const prefs = await loadPreferences();
   const authHeaders = {
-    'ftrack-user': prefs.FTRACK_API_USER || '',
-    'ftrack-api-key': prefs.FTRACK_API_KEY || ''
+    "ftrack-user": prefs.FTRACK_API_USER || "",
+    "ftrack-api-key": prefs.FTRACK_API_KEY || "",
   };
-  
+
   // Pass session object for session-based authentication, with auth headers as fallback
-  const mediaDownloadService = new MediaDownloadService(4, session, authHeaders);
+  const mediaDownloadService = new MediaDownloadService(
+    4,
+    session,
+    authHeaders,
+  );
 
   try {
     // Clear previous debug log
-    await debugToFile(DEBUG_LOG_PATH, "=== DOWNLOAD MEDIA TOOL DEBUG SESSION STARTED ===");
+    await debugToFile(
+      DEBUG_LOG_PATH,
+      "=== DOWNLOAD MEDIA TOOL DEBUG SESSION STARTED ===",
+    );
     await debugToFile(DEBUG_LOG_PATH, "Project context:", projectContext);
     await debugToFile(DEBUG_LOG_PATH, "Context display:", contextDisplay);
 
@@ -64,18 +77,25 @@ export async function downloadMediaTool(
     await debugToFile(DEBUG_LOG_PATH, "Download mode selected:", downloadMode);
 
     if (downloadMode === "single") {
-      await handleSingleAssetVersionDownload(componentService, mediaDownloadService, queryService);
+      await handleSingleAssetVersionDownload(
+        componentService,
+        mediaDownloadService,
+        queryService,
+      );
     } else {
-      await handleMultipleShotsDownload(componentService, mediaDownloadService, queryService);
+      await handleMultipleShotsDownload(
+        componentService,
+        mediaDownloadService,
+        queryService,
+      );
     }
 
     console.log("\n✅ Download process completed!");
-
   } catch (error) {
     handleError(error, {
-      operation: 'download media',
-      entity: 'AssetVersion',
-      additionalData: { contextDisplay }
+      operation: "download media",
+      entity: "AssetVersion",
+      additionalData: { contextDisplay },
     });
     throw error;
   }
@@ -89,8 +109,8 @@ async function selectDownloadMode(): Promise<"single" | "multiple"> {
     message: "Download media from:",
     options: [
       { name: "A) Single asset version (enter ID)", value: "single" as const },
-      { name: "B) Multiple shots (fuzzy search)", value: "multiple" as const }
-    ]
+      { name: "B) Multiple shots (fuzzy search)", value: "multiple" as const },
+    ],
   });
 
   return mode as "single" | "multiple";
@@ -102,28 +122,34 @@ async function selectDownloadMode(): Promise<"single" | "multiple"> {
 async function handleSingleAssetVersionDownload(
   componentService: ComponentService,
   mediaDownloadService: MediaDownloadService,
-  queryService: QueryService
+  queryService: QueryService,
 ): Promise<void> {
   // Get asset version ID from user
   const assetVersionId = await promptForAssetVersionId();
   if (!assetVersionId) return;
 
-  await debugToFile(DEBUG_LOG_PATH, "Asset version ID entered:", assetVersionId);
+  await debugToFile(
+    DEBUG_LOG_PATH,
+    "Asset version ID entered:",
+    assetVersionId,
+  );
 
   // Validate and fetch the asset version
   console.log(`\n🔍 Looking up asset version: ${assetVersionId}`);
-  
+
   const assetVersions = await withErrorHandling(
     async () => {
-      const result = await queryService.queryAssetVersions(`id is "${assetVersionId}"`);
+      const result = await queryService.queryAssetVersions(
+        `id is "${assetVersionId}"`,
+      );
       await debugToFile(DEBUG_LOG_PATH, "Asset version query result:", result);
       return result;
     },
     {
-      operation: 'fetch asset version',
-      entity: 'AssetVersion',
-      additionalData: { assetVersionId }
-    }
+      operation: "fetch asset version",
+      entity: "AssetVersion",
+      additionalData: { assetVersionId },
+    },
   );
 
   if (!assetVersions?.data || assetVersions.data.length === 0) {
@@ -132,7 +158,11 @@ async function handleSingleAssetVersionDownload(
   }
 
   const assetVersion = assetVersions.data[0] as AssetVersion;
-  console.log(`\n📦 Found asset version: ${assetVersion.asset?.name || "Unknown"} v${assetVersion.version || "Unknown"}`);
+  console.log(
+    `\n📦 Found asset version: ${assetVersion.asset?.name || "Unknown"} v${
+      assetVersion.version || "Unknown"
+    }`,
+  );
 
   // Get media preference and download path
   const mediaPreference = await selectMediaPreference();
@@ -144,27 +174,32 @@ async function handleSingleAssetVersionDownload(
     componentService,
     mediaDownloadService,
     mediaPreference,
-    downloadPath
+    downloadPath,
   );
 
   // Handle fallback if the download failed
   if (!result.success) {
     console.log(`\n⚠️  Primary download failed: ${result.reason}`);
-    
-    const components = await componentService.getComponentsForAssetVersion(assetVersion.id);
+
+    const components = await componentService.getComponentsForAssetVersion(
+      assetVersion.id,
+    );
     if (components.length > 0) {
       const failedDownloads = [{
-        shot: { id: assetVersion.asset?.parent?.id || '', name: assetVersion.asset?.parent?.name || 'Unknown' } as Shot,
+        shot: {
+          id: assetVersion.asset?.parent?.id || "",
+          name: assetVersion.asset?.parent?.name || "Unknown",
+        } as Shot,
         version: assetVersion,
         components,
-        reason: result.reason || 'Unknown error'
+        reason: result.reason || "Unknown error",
       }];
 
       await handleFallbackDownloads(
         failedDownloads,
         componentService,
         mediaDownloadService,
-        downloadPath
+        downloadPath,
       );
     } else {
       console.log(`❌ No components available for fallback`);
@@ -178,17 +213,21 @@ async function handleSingleAssetVersionDownload(
 async function handleMultipleShotsDownload(
   componentService: ComponentService,
   mediaDownloadService: MediaDownloadService,
-  queryService: QueryService
+  queryService: QueryService,
 ): Promise<void> {
   // Get search pattern from user
   const searchPattern = await promptForShotSearchPattern();
   if (!searchPattern) return;
 
-  await debugToFile(DEBUG_LOG_PATH, "Shot search pattern entered:", searchPattern);
+  await debugToFile(
+    DEBUG_LOG_PATH,
+    "Shot search pattern entered:",
+    searchPattern,
+  );
 
   // Fetch all shots and filter client-side for fuzzy matching
   console.log(`\n🔍 Searching for shots matching: "${searchPattern}"`);
-  
+
   const allShots = await withErrorHandling(
     async () => {
       const result = await queryService.queryShots();
@@ -196,10 +235,10 @@ async function handleMultipleShotsDownload(
       return result;
     },
     {
-      operation: 'fetch shots',
-      entity: 'Shot',
-      additionalData: { searchPattern }
-    }
+      operation: "fetch shots",
+      entity: "Shot",
+      additionalData: { searchPattern },
+    },
   );
 
   if (!allShots?.data || allShots.data.length === 0) {
@@ -208,12 +247,13 @@ async function handleMultipleShotsDownload(
   }
 
   // Filter shots using fuzzy matching (case-insensitive) or wildcard
-  const matchingShots = searchPattern === "*" 
-    ? allShots.data 
+  const matchingShots = searchPattern === "*"
+    ? allShots.data
     : allShots.data.filter((shot: unknown) => {
-        const typedShot = shot as Shot;
-        return typedShot.name && typedShot.name.toLowerCase().includes(searchPattern.toLowerCase());
-      });
+      const typedShot = shot as Shot;
+      return typedShot.name &&
+        typedShot.name.toLowerCase().includes(searchPattern.toLowerCase());
+    });
 
   // Sort shots alphabetically by name
   matchingShots.sort((a: unknown, b: unknown) => {
@@ -233,21 +273,29 @@ async function handleMultipleShotsDownload(
   if (searchPattern === "*") {
     console.log(`\n📋 Found ${matchingShots.length} shot(s) in the project:`);
   } else {
-    console.log(`\n📋 Found ${matchingShots.length} shot(s) matching "${searchPattern}":`);
+    console.log(
+      `\n📋 Found ${matchingShots.length} shot(s) matching "${searchPattern}":`,
+    );
   }
-  
-  const shotsWithVersions: Array<{ shot: Shot; latestVersion: AssetVersion }> = [];
+
+  const shotsWithVersions: Array<{ shot: Shot; latestVersion: AssetVersion }> =
+    [];
   for (const shot of matchingShots) {
     const typedShot = shot as Shot;
     // Get latest asset version for each shot
-    const latestVersion = await getLatestAssetVersionForShot(typedShot.id, queryService);
-    const versionInfo = latestVersion ? `v${latestVersion.version}` : "No versions";
+    const latestVersion = await getLatestAssetVersionForShot(
+      typedShot.id,
+      queryService,
+    );
+    const versionInfo = latestVersion
+      ? `v${latestVersion.version}`
+      : "No versions";
     console.log(`   - ${typedShot.name} (Latest version: ${versionInfo})`);
-    
+
     if (latestVersion) {
       shotsWithVersions.push({
         shot: typedShot,
-        latestVersion
+        latestVersion,
       });
     }
   }
@@ -259,8 +307,9 @@ async function handleMultipleShotsDownload(
 
   // Confirm with user
   const proceed = await Confirm.prompt({
-    message: `Continue with downloading from these ${shotsWithVersions.length} shot(s)?`,
-    default: true
+    message:
+      `Continue with downloading from these ${shotsWithVersions.length} shot(s)?`,
+    default: true,
   });
 
   if (!proceed) {
@@ -274,22 +323,21 @@ async function handleMultipleShotsDownload(
 
   // Process each shot's latest version with concurrency
 
-  
   const failedDownloads = await processShotsWithConcurrency(
     shotsWithVersions,
     componentService,
     mediaDownloadService,
     mediaPreference,
-    downloadPath
+    downloadPath,
   );
-  
+
   // Handle fallback downloads if there are any failures
   if (failedDownloads.length > 0) {
     await handleFallbackDownloads(
       failedDownloads,
       componentService,
       mediaDownloadService,
-      downloadPath
+      downloadPath,
     );
   }
 }
@@ -302,13 +350,15 @@ async function processShotsWithConcurrency(
   componentService: ComponentService,
   mediaDownloadService: MediaDownloadService,
   mediaPreference: MediaPreference,
-  downloadPath: string
-): Promise<Array<{
-  shot: Shot;
-  version: AssetVersion;
-  components: Component[];
-  reason: string;
-}>> {
+  downloadPath: string,
+): Promise<
+  Array<{
+    shot: Shot;
+    version: AssetVersion;
+    components: Component[];
+    reason: string;
+  }>
+> {
   const failedDownloads: Array<{
     shot: Shot;
     version: AssetVersion;
@@ -322,7 +372,10 @@ async function processShotsWithConcurrency(
   const startTime = Date.now();
 
   // Simple progress tracking without complex libraries
-  const progressState = new Map<string, { completed: boolean; status: string; elapsed?: number }>();
+  const progressState = new Map<
+    string,
+    { completed: boolean; status: string; elapsed?: number }
+  >();
 
   // Helper function to format elapsed time
   const formatElapsedTime = (start: number): string => {
@@ -345,7 +398,9 @@ async function processShotsWithConcurrency(
     const batch = shotsWithVersions.slice(i, i + BATCH_SIZE);
     const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
 
-    console.log(`\nBatch ${batchNumber}/${totalBatches}: Processing ${batch.length} shot(s)...`);
+    console.log(
+      `\nBatch ${batchNumber}/${totalBatches}: Processing ${batch.length} shot(s)...`,
+    );
 
     const batchStartTime = Date.now();
     let batchSuccessCount = 0;
@@ -354,14 +409,14 @@ async function processShotsWithConcurrency(
     const batchPromises = batch.map(async ({ shot, latestVersion }) => {
       const key = `${shot.id}-${latestVersion.id}`;
       const itemStartTime = Date.now();
-      
+
       try {
         // Simple progress callback that updates our state
         const progressCallback = (progress: number, status: string) => {
-          progressState.set(key, { 
-            completed: progress >= 100, 
+          progressState.set(key, {
+            completed: progress >= 100,
             status: status,
-            elapsed: progress >= 100 ? Date.now() - itemStartTime : undefined
+            elapsed: progress >= 100 ? Date.now() - itemStartTime : undefined,
           });
         };
 
@@ -371,14 +426,19 @@ async function processShotsWithConcurrency(
           mediaDownloadService,
           mediaPreference,
           downloadPath,
-          (p, s) => { void progressCallback(p, s); }
+          (p, s) => {
+            void progressCallback(p, s);
+          },
         );
 
         if (!result.success) {
           const elapsed = Math.floor((Date.now() - itemStartTime) / 1000);
-          console.log(`❌ ${shot.name} (v${latestVersion.version}) - Failed: ${result.reason} (${elapsed}s)`);
-          
-          const components = await componentService.getComponentsForAssetVersion(latestVersion.id);
+          console.log(
+            `❌ ${shot.name} (v${latestVersion.version}) - Failed: ${result.reason} (${elapsed}s)`,
+          );
+
+          const components = await componentService
+            .getComponentsForAssetVersion(latestVersion.id);
           return {
             shot,
             version: latestVersion,
@@ -389,14 +449,31 @@ async function processShotsWithConcurrency(
         }
 
         const elapsed = Math.floor((Date.now() - itemStartTime) / 1000);
-        console.log(`✅ ${shot.name} (v${latestVersion.version}) - Completed (${elapsed}s)`);
-        return { shot, version: latestVersion, success: true, components: [], reason: "" };
-        
+        console.log(
+          `✅ ${shot.name} (v${latestVersion.version}) - Completed (${elapsed}s)`,
+        );
+        return {
+          shot,
+          version: latestVersion,
+          success: true,
+          components: [],
+          reason: "",
+        };
       } catch (error) {
         const elapsed = Math.floor((Date.now() - itemStartTime) / 1000);
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        console.log(`❌ ${shot.name} (v${latestVersion.version}) - Error: ${errorMessage} (${elapsed}s)`);
-        return { shot, version: latestVersion, components: [], reason: errorMessage, success: false };
+        const errorMessage = error instanceof Error
+          ? error.message
+          : "Unknown error";
+        console.log(
+          `❌ ${shot.name} (v${latestVersion.version}) - Error: ${errorMessage} (${elapsed}s)`,
+        );
+        return {
+          shot,
+          version: latestVersion,
+          components: [],
+          reason: errorMessage,
+          success: false,
+        };
       }
     });
 
@@ -418,29 +495,37 @@ async function processShotsWithConcurrency(
         }
       } else {
         // Promise rejected
-        componentService.getComponentsForAssetVersion(latestVersion.id).then((components) => {
-          failedDownloads.push({
-            shot,
-            version: latestVersion,
-            components: components || [],
-            reason: `Promise rejected: ${result.reason || "Unknown error"}`,
-          });
-        });
+        componentService.getComponentsForAssetVersion(latestVersion.id).then(
+          (components) => {
+            failedDownloads.push({
+              shot,
+              version: latestVersion,
+              components: components || [],
+              reason: `Promise rejected: ${result.reason || "Unknown error"}`,
+            });
+          },
+        );
         batchFailureCount++;
       }
     });
 
     const batchElapsed = Math.floor((Date.now() - batchStartTime) / 1000);
-    console.log(`   ⏱️  Batch ${batchNumber} completed: ${batchSuccessCount} successful, ${batchFailureCount} failed (${batchElapsed}s)`);
+    console.log(
+      `   ⏱️  Batch ${batchNumber} completed: ${batchSuccessCount} successful, ${batchFailureCount} failed (${batchElapsed}s)`,
+    );
   }
 
   // Final summary
   const totalElapsed = formatTotalElapsed();
   const successCount = totalShots - failedDownloads.length;
-  
+
   console.log("\n" + "═".repeat(80));
   console.log("📊 DOWNLOAD COMPLETED");
-  console.log(`Results: ${successCount}/${totalShots} successful (${Math.round((successCount / totalShots) * 100)}%)`);
+  console.log(
+    `Results: ${successCount}/${totalShots} successful (${
+      Math.round((successCount / totalShots) * 100)
+    }%)`,
+  );
   console.log(`Total time: ${totalElapsed}`);
   console.log("═".repeat(80));
 
@@ -450,23 +535,34 @@ async function processShotsWithConcurrency(
 /**
  * Get latest asset version for a shot
  */
-async function getLatestAssetVersionForShot(shotId: string, queryService: QueryService): Promise<AssetVersion | null> {
+async function getLatestAssetVersionForShot(
+  shotId: string,
+  queryService: QueryService,
+): Promise<AssetVersion | null> {
   try {
     // First, try to find any asset versions for this shot (not just "Review" type)
     const allVersionsResult = await queryService.queryAssetVersions(
-      `asset.parent.id is "${shotId}" order by version desc limit 10`
+      `asset.parent.id is "${shotId}" order by version desc limit 10`,
     );
-    
-    await debugToFile(DEBUG_LOG_PATH, `All asset versions for shot ${shotId}:`, allVersionsResult);
-    
+
+    await debugToFile(
+      DEBUG_LOG_PATH,
+      `All asset versions for shot ${shotId}:`,
+      allVersionsResult,
+    );
+
     if (allVersionsResult?.data && allVersionsResult.data.length > 0) {
       // Log what asset types we found
       const assetTypes = allVersionsResult.data.map((av: unknown) => {
         const typedAv = av as AssetVersion;
         return typedAv.asset?.type?.name;
       }).filter(Boolean);
-      await debugToFile(DEBUG_LOG_PATH, `Asset types found for shot ${shotId}:`, assetTypes);
-      
+      await debugToFile(
+        DEBUG_LOG_PATH,
+        `Asset types found for shot ${shotId}:`,
+        assetTypes,
+      );
+
       // Try to find "Review" type first
       const reviewVersion = allVersionsResult.data.find((av: unknown) => {
         const typedAv = av as AssetVersion;
@@ -475,7 +571,7 @@ async function getLatestAssetVersionForShot(shotId: string, queryService: QueryS
       if (reviewVersion) {
         return reviewVersion as AssetVersion;
       }
-      
+
       // If no Review type, try common media types
       const mediaTypes = ["Comp", "Render", "Movie", "Video", "Media"];
       for (const mediaType of mediaTypes) {
@@ -484,19 +580,30 @@ async function getLatestAssetVersionForShot(shotId: string, queryService: QueryS
           return typedAv.asset?.type?.name === mediaType;
         });
         if (mediaVersion) {
-          await debugToFile(DEBUG_LOG_PATH, `Using asset type "${mediaType}" for shot ${shotId}`);
+          await debugToFile(
+            DEBUG_LOG_PATH,
+            `Using asset type "${mediaType}" for shot ${shotId}`,
+          );
           return mediaVersion as AssetVersion;
         }
       }
-      
+
       // If no common media types, return the latest version of any type
-      await debugToFile(DEBUG_LOG_PATH, `Using latest version of any type for shot ${shotId}:`, allVersionsResult.data[0]);
+      await debugToFile(
+        DEBUG_LOG_PATH,
+        `Using latest version of any type for shot ${shotId}:`,
+        allVersionsResult.data[0],
+      );
       return allVersionsResult.data[0] as AssetVersion;
     }
-    
+
     return null;
   } catch (error) {
-    await debugToFile(DEBUG_LOG_PATH, `Error getting latest version for shot ${shotId}:`, error);
+    await debugToFile(
+      DEBUG_LOG_PATH,
+      `Error getting latest version for shot ${shotId}:`,
+      error,
+    );
     return null;
   }
 }
@@ -523,7 +630,8 @@ async function promptForAssetVersionId(): Promise<string | null> {
  */
 async function promptForShotSearchPattern(): Promise<string | null> {
   const searchPattern = await Input.prompt({
-    message: "Enter search pattern (e.g., \"SHOT0\" or \"*\" for all shots)\n Example: \"SHOT0\" would find all shots containing \"SHOT0\" in their name:",
+    message:
+      'Enter search pattern (e.g., "SHOT0" or "*" for all shots)\n Example: "SHOT0" would find all shots containing "SHOT0" in their name:',
     validate: (input: string) => {
       if (!input.trim()) {
         return "Search pattern is required";
@@ -535,8 +643,6 @@ async function promptForShotSearchPattern(): Promise<string | null> {
   return searchPattern.trim() || null;
 }
 
-
-
 /**
  * Get user's media preference
  */
@@ -545,8 +651,11 @@ async function selectMediaPreference(): Promise<MediaPreference> {
     message: "Select media preference:",
     options: [
       { name: "Original Quality (prefer original files)", value: "original" },
-      { name: "Encoded Quality (prefer encoded/review files)", value: "encoded" }
-    ]
+      {
+        name: "Encoded Quality (prefer encoded/review files)",
+        value: "encoded",
+      },
+    ],
   });
 
   return preference as MediaPreference;
@@ -557,10 +666,10 @@ async function selectMediaPreference(): Promise<MediaPreference> {
  */
 async function getDownloadPath(): Promise<string> {
   const systemDownloads = getDownloadsDirectory();
-  
+
   const downloadPath = await Input.prompt({
     message: "Enter download directory path (or press Enter for default):",
-    default: systemDownloads
+    default: systemDownloads,
   });
 
   return downloadPath.trim() || systemDownloads;
@@ -574,57 +683,86 @@ async function processAssetVersion(
   componentService: ComponentService,
   mediaDownloadService: MediaDownloadService,
   mediaPreference: MediaPreference,
-  downloadPath: string
+  downloadPath: string,
 ): Promise<{ success: boolean; reason?: string }> {
   try {
-    console.log(`\n📋 Processing: ${version.asset?.name || 'Unknown Asset'} v${version.version}`);
+    console.log(
+      `\n📋 Processing: ${
+        version.asset?.name || "Unknown Asset"
+      } v${version.version}`,
+    );
 
     // Get components for this asset version
-    const components = await componentService.getComponentsForAssetVersion(version.id);
+    const components = await componentService.getComponentsForAssetVersion(
+      version.id,
+    );
 
     if (!components || components.length === 0) {
       console.log(`⚠️  No components found for asset version ${version.id}`);
-      return { success: false, reason: 'No components found' };
+      return { success: false, reason: "No components found" };
     }
 
     console.log(`📁 Found ${components.length} component(s)`);
 
     // Find the best component based on preference
-    const bestComponent = componentService.findBestComponent(components, mediaPreference);
+    const bestComponent = componentService.findBestComponent(
+      components,
+      mediaPreference,
+    );
 
     if (!bestComponent) {
-      console.log(`❌ No suitable component found for preference: ${mediaPreference}`);
-      return { success: false, reason: `No suitable component found for preference: ${mediaPreference}` };
+      console.log(
+        `❌ No suitable component found for preference: ${mediaPreference}`,
+      );
+      return {
+        success: false,
+        reason:
+          `No suitable component found for preference: ${mediaPreference}`,
+      };
     }
 
     const componentType = componentService.identifyComponentType(bestComponent);
-    console.log(`🎯 Selected component: ${bestComponent.name} (${componentType})`);
+    console.log(
+      `🎯 Selected component: ${bestComponent.name} (${componentType})`,
+    );
 
     // Get download URL
-      const downloadUrl = await componentService.getDownloadUrl(bestComponent.id);
-      await debugToFile(DEBUG_LOG_PATH, `Generated download URL for component ${bestComponent.id}:`, downloadUrl);
-      
-      if (!downloadUrl) {
-        console.log(`❌ Could not get download URL for component: ${bestComponent.name}`);
-        return { success: false, reason: 'Could not get download URL' };
-      }
+    const downloadUrl = await componentService.getDownloadUrl(bestComponent.id);
+    await debugToFile(
+      DEBUG_LOG_PATH,
+      `Generated download URL for component ${bestComponent.id}:`,
+      downloadUrl,
+    );
 
-     // Generate filename
-     const filename = mediaDownloadService.generateSafeFilename(bestComponent, version);
+    if (!downloadUrl) {
+      console.log(
+        `❌ Could not get download URL for component: ${bestComponent.name}`,
+      );
+      return { success: false, reason: "Could not get download URL" };
+    }
 
-     console.log(`📥 Starting download: ${filename}`);
+    // Generate filename
+    const filename = mediaDownloadService.generateSafeFilename(
+      bestComponent,
+      version,
+    );
 
-     // Download the file
-     await mediaDownloadService.downloadFile(downloadUrl, downloadPath, filename);
-     console.log(`✅ Download completed: ${filename}`);
+    console.log(`📥 Starting download: ${filename}`);
 
-     return { success: true };
+    // Download the file
+    await mediaDownloadService.downloadFile(
+      downloadUrl,
+      downloadPath,
+      filename,
+    );
+    console.log(`✅ Download completed: ${filename}`);
 
+    return { success: true };
   } catch (error) {
     handleError(error, {
-      operation: 'process asset version',
-      entity: 'AssetVersion',
-      additionalData: { versionId: version.id }
+      operation: "process asset version",
+      entity: "AssetVersion",
+      additionalData: { versionId: version.id },
     });
     return { success: false, reason: `Error: ${error}` };
   }
@@ -639,25 +777,34 @@ async function processAssetVersionWithProgress(
   mediaDownloadService: MediaDownloadService,
   mediaPreference: MediaPreference,
   downloadPath: string,
-  progressCallback: (progress: number, status: string) => void
+  progressCallback: (progress: number, status: string) => void,
 ): Promise<{ success: boolean; reason?: string }> {
   try {
-    progressCallback(10, 'Getting components...');
+    progressCallback(10, "Getting components...");
 
     // Get components for this asset version
-    const components = await componentService.getComponentsForAssetVersion(version.id);
+    const components = await componentService.getComponentsForAssetVersion(
+      version.id,
+    );
 
     if (!components || components.length === 0) {
-      return { success: false, reason: 'No components found' };
+      return { success: false, reason: "No components found" };
     }
 
     progressCallback(30, `Found ${components.length} component(s)`);
 
     // Find the best component based on preference
-    const bestComponent = componentService.findBestComponent(components, mediaPreference);
+    const bestComponent = componentService.findBestComponent(
+      components,
+      mediaPreference,
+    );
 
     if (!bestComponent) {
-      return { success: false, reason: `No suitable component found for preference: ${mediaPreference}` };
+      return {
+        success: false,
+        reason:
+          `No suitable component found for preference: ${mediaPreference}`,
+      };
     }
 
     const componentType = componentService.identifyComponentType(bestComponent);
@@ -665,29 +812,39 @@ async function processAssetVersionWithProgress(
 
     // Get download URL
     const downloadUrl = await componentService.getDownloadUrl(bestComponent.id);
-    await debugToFile(DEBUG_LOG_PATH, `Generated download URL for component ${bestComponent.id}:`, downloadUrl);
-    
+    await debugToFile(
+      DEBUG_LOG_PATH,
+      `Generated download URL for component ${bestComponent.id}:`,
+      downloadUrl,
+    );
+
     if (!downloadUrl) {
-      return { success: false, reason: 'Could not get download URL' };
+      return { success: false, reason: "Could not get download URL" };
     }
 
-    progressCallback(70, 'Starting download...');
+    progressCallback(70, "Starting download...");
 
     // Generate filename
-    const filename = mediaDownloadService.generateSafeFilename(bestComponent, version);
+    const filename = mediaDownloadService.generateSafeFilename(
+      bestComponent,
+      version,
+    );
 
     // Download the file
-    await mediaDownloadService.downloadFile(downloadUrl, downloadPath, filename);
-    
-    progressCallback(100, '✅ Completed');
+    await mediaDownloadService.downloadFile(
+      downloadUrl,
+      downloadPath,
+      filename,
+    );
+
+    progressCallback(100, "✅ Completed");
 
     return { success: true };
-
   } catch (error) {
     handleError(error, {
-      operation: 'process asset version',
-      entity: 'AssetVersion',
-      additionalData: { versionId: version.id }
+      operation: "process asset version",
+      entity: "AssetVersion",
+      additionalData: { versionId: version.id },
     });
     return { success: false, reason: `Error: ${error}` };
   }
@@ -705,26 +862,28 @@ async function handleFallbackDownloads(
   }>,
   componentService: ComponentService,
   mediaDownloadService: MediaDownloadService,
-  downloadPath: string
+  downloadPath: string,
 ): Promise<void> {
-  console.log(`\n⚠️  ${failedDownloads.length} shot(s) had missing media. Choose fallback option:`);
-  
+  console.log(
+    `\n⚠️  ${failedDownloads.length} shot(s) had missing media. Choose fallback option:`,
+  );
+
   const fallbackOption = await Select.prompt({
     message: "How would you like to handle missing media?",
     options: [
-      { 
-        name: "🤖 Automatic fallback (720p > 1080p > image > original)", 
-        value: "automatic" 
+      {
+        name: "🤖 Automatic fallback (720p > 1080p > image > original)",
+        value: "automatic",
       },
-      { 
-        name: "🎯 Manual selection (choose for each shot)", 
-        value: "manual" 
+      {
+        name: "🎯 Manual selection (choose for each shot)",
+        value: "manual",
       },
-      { 
-        name: "❌ Skip fallback downloads", 
-        value: "skip" 
-      }
-    ]
+      {
+        name: "❌ Skip fallback downloads",
+        value: "skip",
+      },
+    ],
   });
 
   if (fallbackOption === "skip") {
@@ -732,12 +891,16 @@ async function handleFallbackDownloads(
     return;
   }
 
-  console.log(`\n📥 Processing ${failedDownloads.length} fallback download(s)...`);
+  console.log(
+    `\n📥 Processing ${failedDownloads.length} fallback download(s)...`,
+  );
 
   for (let i = 0; i < failedDownloads.length; i++) {
     const { shot, version, components } = failedDownloads[i];
-    console.log(`\n[${i + 1}/${failedDownloads.length}] Fallback for ${shot.name}:`);
-    
+    console.log(
+      `\n[${i + 1}/${failedDownloads.length}] Fallback for ${shot.name}:`,
+    );
+
     if (components.length === 0) {
       console.log(`❌ No components available for fallback`);
       continue;
@@ -750,7 +913,7 @@ async function handleFallbackDownloads(
         components,
         componentService,
         mediaDownloadService,
-        downloadPath
+        downloadPath,
       );
     } else {
       await handleManualFallback(
@@ -759,7 +922,7 @@ async function handleFallbackDownloads(
         components,
         componentService,
         mediaDownloadService,
-        downloadPath
+        downloadPath,
       );
     }
   }
@@ -774,11 +937,11 @@ async function handleAutomaticFallback(
   components: Component[],
   componentService: ComponentService,
   mediaDownloadService: MediaDownloadService,
-  downloadPath: string
+  downloadPath: string,
 ): Promise<void> {
   // Categorize components by type
   const componentsByType = new Map<string, Component[]>();
-  
+
   for (const component of components) {
     const type = componentService.identifyComponentType(component);
     if (!componentsByType.has(type)) {
@@ -788,29 +951,35 @@ async function handleAutomaticFallback(
   }
 
   // Define fallback priority: 720p > 1080p > image > original > other
-  const fallbackPriority = ['encoded-720p', 'encoded-1080p', 'other', 'original'];
-  
+  const fallbackPriority = [
+    "encoded-720p",
+    "encoded-1080p",
+    "other",
+    "original",
+  ];
+
   let selectedComponent: Component | null = null;
-  let selectedType = '';
+  let selectedType = "";
 
   for (const type of fallbackPriority) {
     const componentsOfType = componentsByType.get(type);
     if (componentsOfType && componentsOfType.length > 0) {
       // For 'other' type, prefer image files
-      if (type === 'other') {
-        const imageComponent = componentsOfType.find(c => 
-          c.file_type && ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'exr', 'dpx'].some(ext => 
+      if (type === "other") {
+        const imageComponent = componentsOfType.find((c) =>
+          c.file_type &&
+          ["jpg", "jpeg", "png", "tiff", "tif", "exr", "dpx"].some((ext) =>
             c.file_type.toLowerCase().includes(ext)
           )
         );
         if (imageComponent) {
           selectedComponent = imageComponent;
-          selectedType = 'image';
+          selectedType = "image";
           break;
         }
       } else {
         // For other types, pick the largest component
-        selectedComponent = componentsOfType.reduce((best, current) => 
+        selectedComponent = componentsOfType.reduce((best, current) =>
           (current.size || 0) > (best.size || 0) ? current : best
         );
         selectedType = type;
@@ -827,16 +996,25 @@ async function handleAutomaticFallback(
   console.log(`🎯 Auto-selected: ${selectedComponent.name} (${selectedType})`);
 
   try {
-    const downloadUrl = await componentService.getDownloadUrl(selectedComponent.id);
+    const downloadUrl = await componentService.getDownloadUrl(
+      selectedComponent.id,
+    );
     if (!downloadUrl) {
       console.log(`❌ Could not get download URL for fallback component`);
       return;
     }
 
-    const filename = mediaDownloadService.generateSafeFilename(selectedComponent, version);
+    const filename = mediaDownloadService.generateSafeFilename(
+      selectedComponent,
+      version,
+    );
     console.log(`📥 Starting fallback download: ${filename}`);
-    
-    await mediaDownloadService.downloadFile(downloadUrl, downloadPath, filename);
+
+    await mediaDownloadService.downloadFile(
+      downloadUrl,
+      downloadPath,
+      filename,
+    );
     console.log(`✅ Fallback download completed: ${filename}`);
   } catch (error) {
     console.log(`❌ Fallback download failed: ${error}`);
@@ -852,29 +1030,31 @@ async function handleManualFallback(
   components: Component[],
   componentService: ComponentService,
   mediaDownloadService: MediaDownloadService,
-  downloadPath: string
+  downloadPath: string,
 ): Promise<void> {
   console.log(`📁 Available components for ${shot.name}:`);
-  
+
   // Create options for each component with type and size info
   const componentOptions = components.map((component, index) => {
     const type = componentService.identifyComponentType(component);
-    const sizeInfo = component.size ? formatBytes(component.size) : 'Unknown size';
+    const sizeInfo = component.size
+      ? formatBytes(component.size)
+      : "Unknown size";
     return {
       name: `${component.name} (${type}, ${sizeInfo})`,
-      value: index
+      value: index,
     };
   });
 
   // Add skip option
   componentOptions.push({
     name: "⏭️  Skip this shot",
-    value: -1
+    value: -1,
   });
 
   const selectedIndex = await Select.prompt({
     message: `Select component to download for ${shot.name}:`,
-    options: componentOptions
+    options: componentOptions,
   });
 
   if (selectedIndex === -1) {
@@ -886,16 +1066,25 @@ async function handleManualFallback(
   console.log(`🎯 Selected: ${selectedComponent.name}`);
 
   try {
-    const downloadUrl = await componentService.getDownloadUrl(selectedComponent.id);
+    const downloadUrl = await componentService.getDownloadUrl(
+      selectedComponent.id,
+    );
     if (!downloadUrl) {
       console.log(`❌ Could not get download URL for selected component`);
       return;
     }
 
-    const filename = mediaDownloadService.generateSafeFilename(selectedComponent, version);
+    const filename = mediaDownloadService.generateSafeFilename(
+      selectedComponent,
+      version,
+    );
     console.log(`📥 Starting download: ${filename}`);
-    
-    await mediaDownloadService.downloadFile(downloadUrl, downloadPath, filename);
+
+    await mediaDownloadService.downloadFile(
+      downloadUrl,
+      downloadPath,
+      filename,
+    );
     console.log(`✅ Download completed: ${filename}`);
   } catch (error) {
     console.log(`❌ Download failed: ${error}`);
@@ -906,11 +1095,11 @@ async function handleManualFallback(
  * Format bytes to human readable string
  */
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
-  
+  if (bytes === 0) return "0 Bytes";
+
   const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }

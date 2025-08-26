@@ -1,5 +1,9 @@
 import type { Session } from "@ftrack/api";
-import type { DryRunReportItem, DeletionResultSummary, ComponentDeletionChoice } from "../types/deleteMedia.ts";
+import type {
+  ComponentDeletionChoice,
+  DeletionResultSummary,
+  DryRunReportItem,
+} from "../types/deleteMedia.ts";
 import type { Component, ComponentLocation } from "../types/index.ts";
 import { ComponentService } from "./componentService.ts";
 import { SessionService } from "./session.ts";
@@ -17,7 +21,7 @@ export class DeletionService {
   constructor(
     private session: Session,
     private sessionService: SessionService,
-    private queryService: QueryService
+    private queryService: QueryService,
   ) {
     this.componentService = new ComponentService(sessionService, queryService);
   }
@@ -29,63 +33,112 @@ export class DeletionService {
     versionIds: string[],
     opts: { dryRun: boolean },
   ): Promise<{ report: DryRunReportItem[]; summary: DeletionResultSummary }> {
-    debug(`DeletionService.deleteAssetVersions - IDs: ${versionIds.length}, dryRun: ${opts.dryRun}`);
-    
+    debug(
+      `DeletionService.deleteAssetVersions - IDs: ${versionIds.length}, dryRun: ${opts.dryRun}`,
+    );
+
     const report: DryRunReportItem[] = [];
     const failures: Array<{ id: string; reason: string }> = [];
     let totalBytesDeleted = 0;
     let totalComponentsDeleted = 0;
 
-    for (const versionId of versionIds) {
-      try {
-        // Fetch version with components and metadata
-        const versionDetails = await this.fetchVersionDetails(versionId);
-        
-        if (!versionDetails) {
-          failures.push({ id: versionId, reason: "Version not found" });
-          continue;
-        }
+    // Process versions in concurrent batches for better performance
+    const concurrencyLimit = 5; // Limit concurrent API calls
+    const batchSize = Math.min(concurrencyLimit, versionIds.length);
+    
+    for (let i = 0; i < versionIds.length; i += batchSize) {
+      const batch = versionIds.slice(i, i + batchSize);
+      
+      // Process batch concurrently
+      const batchPromises = batch.map(async (versionId) => {
+        try {
+          // Fetch version with components and metadata
+          const versionDetails = await this.fetchVersionDetails(versionId);
 
-        // Get all components for this version
-        const components = await this.componentService.getComponentsForAssetVersion(versionId);
-        
-        // Calculate total size of all components for this version
-        const versionSizeBytes = components.reduce((total, comp) => total + (comp.size || 0), 0);
-        totalBytesDeleted += versionSizeBytes;
-        totalComponentsDeleted += components.length;
+          if (!versionDetails) {
+            return { versionId, error: "Version not found" };
+          }
 
-        // Create report entry for the whole version deletion
-        report.push({
-          operation: "delete_version",
-          assetVersionId: versionId,
-          assetVersionLabel: `${versionDetails.asset?.name || "Unknown"} v${versionDetails.version || "?"}`,
-          shotName: versionDetails.asset?.parent?.name || undefined,
-          status: versionDetails.status?.name || undefined,
-          user: versionDetails.user?.username || undefined,
-          size: versionSizeBytes,
-          locations: this.extractLocationIdentifiers(components),
-        });
+          // Get all components for this version
+          const components = await this.componentService
+            .getComponentsForAssetVersion(versionId);
 
-        // Add individual component entries for detailed tracking
-        for (const component of components) {
-          report.push({
+          // Calculate total size of all components for this version
+          const versionSizeBytes = components.reduce(
+            (total, comp) => total + (comp.size || 0),
+            0,
+          );
+
+          // Create report entry for the whole version deletion
+          const versionReport: DryRunReportItem = {
+            operation: "delete_version",
+            assetVersionId: versionId,
+            assetVersionLabel: `${versionDetails.asset?.name || "Unknown"} v${
+              versionDetails.version || "?"
+            }`,
+            shotName: versionDetails.asset?.parent?.name || undefined,
+            status: versionDetails.status?.name || undefined,
+            user: versionDetails.user?.username || undefined,
+            size: versionSizeBytes,
+            locations: this.extractLocationIdentifiers(components),
+          };
+
+          // Create component reports
+          const componentReports: DryRunReportItem[] = components.map((component) => ({
             operation: "delete_components",
             assetVersionId: versionId,
-            assetVersionLabel: `${versionDetails.asset?.name || "Unknown"} v${versionDetails.version || "?"}`,
+            assetVersionLabel: `${versionDetails.asset?.name || "Unknown"} v${
+              versionDetails.version || "?"
+            }`,
             shotName: versionDetails.asset?.parent?.name || undefined,
             componentId: component.id,
             componentName: component.name,
-            componentType: this.componentService.identifyComponentType(component),
+            componentType: this.componentService.identifyComponentType(
+              component,
+            ),
             size: component.size || 0,
-            locations: component.component_locations?.map((loc: ComponentLocation) => loc.resource_identifier).filter(Boolean) || [],
-          });
+            locations:
+              component.component_locations?.map((loc: ComponentLocation) =>
+                loc.resource_identifier
+              ).filter(Boolean) || [],
+          }));
+
+          debug(
+            `Version ${versionId}: ${components.length} components, ${versionSizeBytes} bytes`,
+          );
+
+          return {
+            versionId,
+            versionSizeBytes,
+            componentsCount: components.length,
+            reports: [versionReport, ...componentReports],
+          };
+        } catch (error) {
+          debug(`Failed to process version ${versionId}: ${error}`);
+          return {
+            versionId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
         }
+      });
 
-        debug(`Version ${versionId}: ${components.length} components, ${versionSizeBytes} bytes`);
-
-      } catch (error) {
-        debug(`Failed to process version ${versionId}: ${error}`);
-        failures.push({ id: versionId, reason: error instanceof Error ? error.message : "Unknown error" });
+      // Wait for batch to complete
+      const batchResults = await Promise.all(batchPromises);
+      
+      // Process results
+       for (const result of batchResults) {
+         if ('error' in result) {
+           failures.push({ id: result.versionId, reason: result.error || "Unknown error" });
+         } else {
+           totalBytesDeleted += result.versionSizeBytes;
+           totalComponentsDeleted += result.componentsCount;
+           report.push(...result.reports);
+         }
+       }
+      
+      // Small delay between batches to avoid overwhelming the API
+      if (i + batchSize < versionIds.length) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
     }
 
@@ -106,64 +159,125 @@ export class DeletionService {
 
   /**
    * Delete components from versions with type filtering and thumbnail protection
+   * Optimized with concurrent processing and efficient batching
    */
   async deleteComponents(
     versionIdToComponentChoice: Map<string, ComponentDeletionChoice>,
     opts: { dryRun: boolean },
   ): Promise<{ report: DryRunReportItem[]; summary: DeletionResultSummary }> {
-    debug(`DeletionService.deleteComponents - ${versionIdToComponentChoice.size} versions, dryRun: ${opts.dryRun}`);
-    
+    debug(
+      `DeletionService.deleteComponents - ${versionIdToComponentChoice.size} versions, dryRun: ${opts.dryRun}`,
+    );
+
     const report: DryRunReportItem[] = [];
     const failures: Array<{ id: string; reason: string }> = [];
     let totalBytesDeleted = 0;
     let totalComponentsDeleted = 0;
 
-    for (const [versionId, choice] of versionIdToComponentChoice.entries()) {
-      try {
-        // Fetch version details
-        const versionDetails = await this.fetchVersionDetails(versionId);
-        
-        if (!versionDetails) {
-          failures.push({ id: versionId, reason: "Version not found" });
-          continue;
-        }
+    // Convert map to array for batch processing
+    const versionEntries = Array.from(versionIdToComponentChoice.entries());
+    
+    // Process versions in concurrent batches for better performance
+    const concurrencyLimit = 5; // Limit concurrent API calls
+    const batchSize = Math.min(concurrencyLimit, versionEntries.length);
+    
+    for (let i = 0; i < versionEntries.length; i += batchSize) {
+      const batch = versionEntries.slice(i, i + batchSize);
+      
+      // Process batch concurrently
+      const batchPromises = batch.map(async ([versionId, choice]) => {
+        try {
+          // Fetch version details
+          const versionDetails = await this.fetchVersionDetails(versionId);
 
-        // Get all components for this version
-        const allComponents = await this.componentService.getComponentsForAssetVersion(versionId);
+          if (!versionDetails) {
+            return { versionId, error: "Version not found" };
+          }
 
-        // Filter components based on user choice and exclude thumbnails
-        const componentsToDelete = this.filterComponentsByChoice(allComponents, choice, versionDetails.thumbnail_id);
+          // Get all components for this version
+          const allComponents = await this.componentService
+            .getComponentsForAssetVersion(versionId);
 
-        for (const component of componentsToDelete) {
-          totalBytesDeleted += component.size || 0;
-          totalComponentsDeleted++;
+          // Filter components based on user choice and exclude thumbnails
+          const componentsToDelete = this.filterComponentsByChoice(
+            allComponents,
+            choice,
+            versionDetails.thumbnail_id,
+          );
 
-          report.push({
+          // Calculate total size of components to delete
+          const versionSizeBytes = componentsToDelete.reduce(
+            (total, comp) => total + (comp.size || 0),
+            0,
+          );
+
+          // Create component reports
+          const componentReports: DryRunReportItem[] = componentsToDelete.map((component) => ({
             operation: "delete_components",
             assetVersionId: versionId,
-            assetVersionLabel: `${versionDetails.asset?.name || "Unknown"} v${versionDetails.version || "?"}`,
+            assetVersionLabel: `${versionDetails.asset?.name || "Unknown"} v${
+              versionDetails.version || "?"
+            }`,
             shotName: versionDetails.asset?.parent?.name || undefined,
             status: versionDetails.status?.name || undefined,
             user: versionDetails.user?.username || undefined,
             componentId: component.id,
             componentName: component.name,
-            componentType: this.componentService.identifyComponentType(component),
+            componentType: this.componentService.identifyComponentType(
+              component,
+            ),
             size: component.size || 0,
-            locations: component.component_locations?.map((loc: ComponentLocation) => loc.resource_identifier).filter(Boolean) || [],
-          });
+            locations:
+              component.component_locations?.map((loc: ComponentLocation) =>
+                loc.resource_identifier
+              ).filter(Boolean) || [],
+          }));
+
+          debug(
+            `Version ${versionId}: ${componentsToDelete.length}/${allComponents.length} components selected for deletion (${choice})`,
+          );
+
+          return {
+            versionId,
+            versionSizeBytes,
+            componentsCount: componentsToDelete.length,
+            reports: componentReports,
+          };
+        } catch (error) {
+          debug(`Failed to process version ${versionId}: ${error}`);
+          return {
+            versionId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
         }
+      });
 
-        debug(`Version ${versionId}: ${componentsToDelete.length}/${allComponents.length} components selected for deletion (${choice})`);
-
-      } catch (error) {
-        debug(`Failed to process version ${versionId}: ${error}`);
-        failures.push({ id: versionId, reason: error instanceof Error ? error.message : "Unknown error" });
+      // Wait for batch to complete
+      const batchResults = await Promise.all(batchPromises);
+      
+      // Process results
+      for (const result of batchResults) {
+        if ('error' in result) {
+          failures.push({ id: result.versionId, reason: result.error || "Unknown error" });
+        } else {
+          totalBytesDeleted += result.versionSizeBytes;
+          totalComponentsDeleted += result.componentsCount;
+          report.push(...result.reports);
+        }
+      }
+      
+      // Small delay between batches to avoid overwhelming the API
+      if (i + batchSize < versionEntries.length) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
     }
 
     // Perform actual deletion if not dry-run
     if (!opts.dryRun) {
-      await this.executeComponentDeletions(versionIdToComponentChoice, failures);
+      await this.executeComponentDeletions(
+        versionIdToComponentChoice,
+        failures,
+      );
     }
 
     const summary: DeletionResultSummary = {
@@ -182,33 +296,38 @@ export class DeletionService {
   private async fetchVersionDetails(versionId: string): Promise<any> {
     try {
       // Use QueryService which handles project scoping properly
-      const result = await this.queryService.queryAssetVersions(`id is "${versionId}"`);
-      
+      const result = await this.queryService.queryAssetVersions(
+        `id is "${versionId}"`,
+      );
+
       if (result.data && result.data.length > 0) {
         const version = result.data[0] as Record<string, any>;
-        
+
         // If we need additional fields not included in queryAssetVersions, fetch them separately
         const additionalQuery = `
           select id, status.name, user.username, thumbnail_id, date
           from AssetVersion 
           where id is "${versionId}"
         `;
-        
+
         const additionalResult = await this.session.query(additionalQuery);
         if (additionalResult.data && additionalResult.data.length > 0) {
-          const additionalData = additionalResult.data[0] as Record<string, any>;
+          const additionalData = additionalResult.data[0] as Record<
+            string,
+            any
+          >;
           return {
             ...version,
             status: additionalData.status,
             user: additionalData.user,
             thumbnail_id: additionalData.thumbnail_id,
-            date: additionalData.date
+            date: additionalData.date,
           };
         }
-        
+
         return version;
       }
-      
+
       return null;
     } catch (error) {
       debug(`Error fetching version details for ${versionId}: ${error}`);
@@ -222,27 +341,29 @@ export class DeletionService {
   private filterComponentsByChoice(
     components: Component[],
     choice: ComponentDeletionChoice,
-    thumbnailId?: string
+    thumbnailId?: string,
   ): Component[] {
     // First, exclude thumbnail component if present
-    let filteredComponents = components.filter(comp => comp.id !== thumbnailId);
+    let filteredComponents = components.filter((comp) =>
+      comp.id !== thumbnailId
+    );
 
     // Then filter by choice
     switch (choice) {
       case "all":
         return filteredComponents;
-      
+
       case "original_only":
-        return filteredComponents.filter(comp => 
+        return filteredComponents.filter((comp) =>
           this.componentService.identifyComponentType(comp) === "original"
         );
-      
+
       case "encoded_only":
-        return filteredComponents.filter(comp => {
+        return filteredComponents.filter((comp) => {
           const type = this.componentService.identifyComponentType(comp);
           return type === "encoded-1080p" || type === "encoded-720p";
         });
-      
+
       default:
         return [];
     }
@@ -253,7 +374,7 @@ export class DeletionService {
    */
   private extractLocationIdentifiers(components: Component[]): string[] {
     const identifiers: string[] = [];
-    
+
     for (const component of components) {
       if (component.component_locations) {
         for (const location of component.component_locations) {
@@ -263,113 +384,198 @@ export class DeletionService {
         }
       }
     }
-    
+
     return [...new Set(identifiers)]; // Remove duplicates
   }
 
   /**
-   * Execute actual version deletions in batches
+   * Execute actual version deletions with optimized batching and error handling
    */
   private async executeVersionDeletions(
     versionIds: string[],
-    failures: Array<{ id: string; reason: string }>
+    failures: Array<{ id: string; reason: string }>,
   ): Promise<void> {
     debug(`Executing deletion of ${versionIds.length} asset versions`);
-    
-    const batchSize = 10; // Process in batches to avoid overwhelming the API
-    
-    for (let i = 0; i < versionIds.length; i += batchSize) {
-      const batch = versionIds.slice(i, i + batchSize);
-      
-      for (const versionId of batch) {
-        try {
-          // Check if this version already failed during dry-run analysis
-          const alreadyFailed = failures.some(f => f.id === versionId);
-          if (alreadyFailed) {
-            debug(`Skipping ${versionId} - already marked as failed`);
-            continue;
+
+    const batchSize = 15; // Increased batch size for better throughput
+    const concurrencyLimit = 3; // Allow some concurrent batches
+    const delayBetweenBatches = 75; // Reduced delay
+
+    // Filter out already failed versions
+    const failedIds = new Set(failures.map(f => f.id));
+    const validVersionIds = versionIds.filter(id => !failedIds.has(id));
+
+    for (let i = 0; i < validVersionIds.length; i += batchSize) {
+      const batch = validVersionIds.slice(i, i + batchSize);
+      debug(`Deleting batch ${Math.floor(i / batchSize) + 1}: ${batch.length} versions`);
+
+      // Process deletions in smaller concurrent groups within the batch
+      const concurrentGroups: string[][] = [];
+      for (let j = 0; j < batch.length; j += concurrencyLimit) {
+        concurrentGroups.push(batch.slice(j, j + concurrencyLimit));
+      }
+
+      for (const group of concurrentGroups) {
+        const deletionPromises = group.map(async (versionId) => {
+          try {
+            debug(`Deleting asset version: ${versionId}`);
+            await this.session.call([{
+              action: "delete",
+              entity_type: "AssetVersion",
+              entity_key: versionId,
+            }]);
+            debug(`Successfully deleted version: ${versionId}`);
+            return { versionId, success: true };
+          } catch (error) {
+            const errorMessage = error instanceof Error
+              ? error.message
+              : "Unknown deletion error";
+            debug(`Failed to delete version ${versionId}: ${errorMessage}`);
+            return { versionId, success: false, error: errorMessage };
           }
-          
-          debug(`Deleting asset version: ${versionId}`);
-          await this.session.call([{
-            action: "delete",
-            entity_type: "AssetVersion",
-            entity_key: versionId
-          }]);
-          
-        } catch (error) {
-          debug(`Failed to delete version ${versionId}: ${error}`);
-          failures.push({ 
-            id: versionId, 
-            reason: error instanceof Error ? error.message : "Deletion failed" 
-          });
+        });
+
+        const results = await Promise.all(deletionPromises);
+        
+        // Process results and update failures
+        for (const result of results) {
+          if (!result.success) {
+            failures.push({ id: result.versionId, reason: result.error || "Unknown error" });
+          }
+        }
+
+        // Small delay between concurrent groups
+        if (group !== concurrentGroups[concurrentGroups.length - 1]) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
         }
       }
-      
-      // Small delay between batches to be gentle on the API
-      if (i + batchSize < versionIds.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Add delay between batches to be respectful to the API
+      if (i + batchSize < validVersionIds.length) {
+        await new Promise((resolve) => setTimeout(resolve, delayBetweenBatches));
       }
     }
   }
 
   /**
-   * Execute actual component deletions in batches
+   * Execute actual component deletions with optimized batching and error handling
    */
   private async executeComponentDeletions(
     versionIdToComponentChoice: Map<string, ComponentDeletionChoice>,
-    failures: Array<{ id: string; reason: string }>
+    failures: Array<{ id: string; reason: string }>,
   ): Promise<void> {
-    debug(`Executing component deletion for ${versionIdToComponentChoice.size} versions`);
+    debug(
+      `Executing component deletion for ${versionIdToComponentChoice.size} versions`,
+    );
+
+    const batchSize = 8; // Increased batch size for better throughput
+    const concurrencyLimit = 3; // Allow some concurrent operations
+    const delayBetweenBatches = 40; // Reduced delay
+
+    const versionEntries = Array.from(versionIdToComponentChoice.entries());
     
-    for (const [versionId, choice] of versionIdToComponentChoice.entries()) {
-      try {
-        // Check if this version already failed during dry-run analysis
-        const alreadyFailed = failures.some(f => f.id === versionId);
-        if (alreadyFailed) {
-          debug(`Skipping ${versionId} - already marked as failed`);
-          continue;
-        }
-        
-        // Fetch version details to get thumbnail_id
-        const versionDetails = await this.fetchVersionDetails(versionId);
-        if (!versionDetails) {
-          failures.push({ id: versionId, reason: "Version not found during execution" });
-          continue;
-        }
-        
-        // Get all components for this version
-        const allComponents = await this.componentService.getComponentsForAssetVersion(versionId);
-        
-        // Filter components based on user choice and exclude thumbnails
-        const componentsToDelete = this.filterComponentsByChoice(allComponents, choice, versionDetails.thumbnail_id);
-        
-        // Delete components in batches
-        const batchSize = 5;
-        for (let i = 0; i < componentsToDelete.length; i += batchSize) {
-          const batch = componentsToDelete.slice(i, i + batchSize);
-          
-          const deleteActions = batch.map(component => ({
-            action: "delete",
-            entity_type: "Component",
-            entity_key: component.id
-          }));
-          
-          debug(`Deleting ${batch.length} components from version ${versionId}`);
-          await this.session.call(deleteActions);
-          
-          // Small delay between batches
-          if (i + batchSize < componentsToDelete.length) {
-            await new Promise(resolve => setTimeout(resolve, 50));
+    // Filter out already failed versions
+    const failedIds = new Set(failures.map(f => f.id));
+    const validEntries = versionEntries.filter(([versionId]) => !failedIds.has(versionId));
+
+    for (let i = 0; i < validEntries.length; i += batchSize) {
+      const batch = validEntries.slice(i, i + batchSize);
+      debug(
+        `Processing component deletion batch ${Math.floor(i / batchSize) + 1}: ${batch.length} versions`,
+      );
+
+      // Process versions in smaller concurrent groups within the batch
+      const concurrentGroups: Array<[string, ComponentDeletionChoice][]> = [];
+      for (let j = 0; j < batch.length; j += concurrencyLimit) {
+        concurrentGroups.push(batch.slice(j, j + concurrencyLimit));
+      }
+
+      for (const group of concurrentGroups) {
+        const versionPromises = group.map(async ([versionId, choice]) => {
+          try {
+            // Get version details and components
+            const versionDetails = await this.fetchVersionDetails(versionId);
+            if (!versionDetails) {
+              return { versionId, success: false, error: "Version not found" };
+            }
+
+            const allComponents = await this.componentService
+              .getComponentsForAssetVersion(versionId);
+            const componentsToDelete = this.filterComponentsByChoice(
+              allComponents,
+              choice,
+              versionDetails.thumbnail_id,
+            );
+
+            // Delete components concurrently for this version
+            const componentDeletionPromises = componentsToDelete.map(async (component) => {
+              try {
+                await this.session.call([{
+                  action: "delete",
+                  entity_type: "Component",
+                  entity_key: component.id,
+                }]);
+                debug(`Successfully deleted component: ${component.id}`);
+                return { componentId: component.id, success: true };
+              } catch (error) {
+                const errorMessage = error instanceof Error
+                  ? error.message
+                  : "Unknown deletion error";
+                debug(
+                  `Failed to delete component ${component.id}: ${errorMessage}`,
+                );
+                return { componentId: component.id, success: false, error: errorMessage };
+              }
+            });
+
+            const componentResults = await Promise.all(componentDeletionPromises);
+            
+            // Collect any component failures
+            const componentFailures = componentResults
+              .filter(result => !result.success)
+              .map(result => ({
+                id: `${versionId}:${result.componentId}`,
+                reason: result.error || "Unknown error"
+              }));
+
+            return {
+              versionId,
+              success: true,
+              componentFailures,
+              deletedCount: componentResults.filter(r => r.success).length
+            };
+          } catch (error) {
+            const errorMessage = error instanceof Error
+              ? error.message
+              : "Unknown error";
+            debug(`Failed to process version ${versionId}: ${errorMessage}`);
+            return { versionId, success: false, error: errorMessage };
           }
-        }
-        
-      } catch (error) {
-        debug(`Failed to delete components for version ${versionId}: ${error}`);
-        failures.push({ 
-          id: versionId, 
-          reason: error instanceof Error ? error.message : "Component deletion failed" 
         });
+
+        const results = await Promise.all(versionPromises);
+        
+        // Process results and update failures
+         for (const result of results) {
+           if (!result.success) {
+             failures.push({ id: result.versionId, reason: result.error || "Unknown error" });
+           } else if ('componentFailures' in result && result.componentFailures) {
+             failures.push(...result.componentFailures);
+             if (result.deletedCount && result.deletedCount > 0) {
+               debug(`Version ${result.versionId}: ${result.deletedCount} components deleted successfully`);
+             }
+           }
+         }
+
+        // Small delay between concurrent groups
+        if (group !== concurrentGroups[concurrentGroups.length - 1]) {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+      }
+
+      // Add delay between batches
+      if (i + batchSize < validEntries.length) {
+        await new Promise((resolve) => setTimeout(resolve, delayBetweenBatches));
       }
     }
   }
@@ -378,14 +584,14 @@ export class DeletionService {
    * Format bytes into human-readable size
    */
   static formatBytes(bytes: number, decimals: number = 2): string {
-    if (bytes === 0) return '0 Bytes';
-    
+    if (bytes === 0) return "0 Bytes";
+
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    
+    const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
+
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
   }
 }

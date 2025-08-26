@@ -3,7 +3,10 @@ import type { Session } from "@ftrack/api";
 import type { ProjectContextService } from "./projectContext.ts";
 
 export class ListService {
-  constructor(private session: Session, private projectContextService: ProjectContextService) {}
+  constructor(
+    private session: Session,
+    private projectContextService: ProjectContextService,
+  ) {}
 
   async fetchAssetVersionLists(): Promise<any[]> {
     // Fetch all lists within current project scope (or globally if in global mode)
@@ -26,7 +29,9 @@ export class ListService {
       where list_id is "${listId}"
     `);
 
-    const entityIds = (listObjectsResponse?.data || []).map((lo: any) => lo.entity_id).filter((id: unknown): id is string => typeof id === "string");
+    const entityIds = (listObjectsResponse?.data || []).map((lo: any) =>
+      lo.entity_id
+    ).filter((id: unknown): id is string => typeof id === "string");
     if (entityIds.length === 0) return [];
 
     // 2) Of those entity_ids, keep only those that are AssetVersion IDs
@@ -43,7 +48,9 @@ export class ListService {
         where ${filter}
       `);
       const avResponse = await this.session.query(avQuery);
-      const chunkIds = (avResponse?.data || []).map((av: any) => av.id).filter((id: unknown): id is string => typeof id === "string");
+      const chunkIds = (avResponse?.data || []).map((av: any) => av.id).filter((
+        id: unknown,
+      ): id is string => typeof id === "string");
       versionIds.push(...chunkIds);
     }
 

@@ -1,5 +1,5 @@
 import { Session } from "@ftrack/api";
-import { Select } from '@cliffy/prompt';
+import { Select } from "@cliffy/prompt";
 import { debug } from "./debug.ts";
 
 export interface Project {
@@ -18,25 +18,29 @@ export interface ProjectContext {
  */
 export async function fetchProjects(session: Session): Promise<Project[]> {
   debug("Fetching available projects");
-  
+
   console.log("Loading projects... ⏳");
-  
+
   try {
     const response = await session.query(
-      'select id, name, full_name from Project'
+      "select id, name, full_name from Project",
     );
-    
+
     const projects = response.data as Project[];
     debug(`Found ${projects.length} projects`);
-    
+
     // Clear the loading message
     console.log(`\r✅ Loaded ${projects.length} projects`);
-    
+
     return projects.sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
     debug(`Error fetching projects: ${error}`);
     console.log("\r❌ Failed to load projects");
-    throw new Error(`Failed to fetch projects: ${error instanceof Error ? error.message : error}`);
+    throw new Error(
+      `Failed to fetch projects: ${
+        error instanceof Error ? error.message : error
+      }`,
+    );
   }
 }
 
@@ -45,38 +49,40 @@ export async function fetchProjects(session: Session): Promise<Project[]> {
  */
 export async function selectProject(session: Session): Promise<ProjectContext> {
   debug("Starting project selection");
-  
+
   const projects = await fetchProjects(session);
-  
+
   if (projects.length === 0) {
     console.log("⚠️  No active projects found. Operating in global mode.");
     return { project: null, isGlobal: true };
   }
-  
+
   const options = [
     { name: "🌐 all projects, site-wide", value: "global" },
-    ...projects.map(project => ({
+    ...projects.map((project) => ({
       name: `📁 ${project.name} (${project.full_name})`,
-      value: project.id
-    }))
+      value: project.id,
+    })),
   ];
-  
+
   const selection = await Select.prompt({
     message: "Select project scope:",
-    options
+    options,
   });
-  
+
   if (selection === "global") {
     debug("User selected global mode");
     return { project: null, isGlobal: true };
   }
-  
-  const selectedProject = projects.find(p => p.id === selection);
+
+  const selectedProject = projects.find((p) => p.id === selection);
   if (!selectedProject) {
     throw new Error("Invalid project selection");
   }
-  
-  debug(`User selected project: ${selectedProject.name} (${selectedProject.id})`);
+
+  debug(
+    `User selected project: ${selectedProject.name} (${selectedProject.id})`,
+  );
   return { project: selectedProject, isGlobal: false };
 }
 

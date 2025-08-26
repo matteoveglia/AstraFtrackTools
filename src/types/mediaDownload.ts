@@ -69,9 +69,14 @@ export interface DownloadResult {
 }
 
 // Configuration types
-export type MediaPreference = 'original' | 'encoded';
-export type DownloadMode = 'single' | 'multiple';
-export type ComponentType = 'original' | 'encoded-1080p' | 'encoded-720p' | 'image' | 'other';
+export type MediaPreference = "original" | "encoded";
+export type DownloadMode = "single" | "multiple";
+export type ComponentType =
+  | "original"
+  | "encoded-1080p"
+  | "encoded-720p"
+  | "image"
+  | "other";
 
 // Download progress tracking
 export interface DownloadProgress {
@@ -80,7 +85,7 @@ export interface DownloadProgress {
   bytesDownloaded: number;
   totalBytes: number;
   percentage: number;
-  status: 'pending' | 'downloading' | 'completed' | 'failed';
+  status: "pending" | "downloading" | "completed" | "failed";
 }
 
 // Service configuration
@@ -95,20 +100,20 @@ export interface DownloadConfig {
 export class ComponentNotFoundError extends Error {
   constructor(assetVersionId: string) {
     super(`No components found for asset version: ${assetVersionId}`);
-    this.name = 'ComponentNotFoundError';
+    this.name = "ComponentNotFoundError";
   }
 }
 
 export class DownloadUrlNotFoundError extends Error {
   constructor(componentId: string) {
     super(`No download URL available for component: ${componentId}`);
-    this.name = 'DownloadUrlNotFoundError';
+    this.name = "DownloadUrlNotFoundError";
   }
 }
 
 export class InvalidAssetVersionError extends Error {
   constructor(assetVersionId: string) {
     super(`Invalid or non-existent asset version: ${assetVersionId}`);
-    this.name = 'InvalidAssetVersionError';
+    this.name = "InvalidAssetVersionError";
   }
 }
