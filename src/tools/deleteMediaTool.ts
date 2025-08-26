@@ -12,6 +12,7 @@ import { FilterService } from "../services/filterService.ts";
 import { ListService } from "../services/listService.ts";
 
 // Simple loading spinner (shared)
+// Simple loading spinner with enhanced progress tracking
 function createSpinner(message: string) {
   const encoder = new TextEncoder();
   const frames = ["|", "/", "-", "\\"];
@@ -33,6 +34,163 @@ function createSpinner(message: string) {
       }
     }
   };
+}
+
+// Enhanced progress spinner with percentage and ETA
+// function createProgressSpinner(baseMessage: string) {
+//   const encoder = new TextEncoder();
+//   const frames = ["|", "/", "-", "\\"];
+//   let i = 0;
+//   let currentMessage = baseMessage;
+//   
+//   const timer = setInterval(() => {
+//     const frame = frames[i = (i + 1) % frames.length];
+//     Deno.stdout.write(encoder.encode(`\r${currentMessage} ${frame}`));
+//   }, 120);
+//   
+//   return {
+//     updateProgress(processed: number, total: number, etaMs?: number) {
+//       const percentage = Math.round((processed / total) * 100);
+//       let progressMsg = `${baseMessage} - ${percentage}%`;
+//       
+//       if (etaMs !== undefined && etaMs > 0) {
+//         const etaSeconds = Math.ceil(etaMs / 1000);
+//         const minutes = Math.floor(etaSeconds / 60);
+//         const seconds = etaSeconds % 60;
+//         const etaFormat = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+//         progressMsg += ` (eta ${etaFormat})`;
+//       }
+//       
+//       currentMessage = progressMsg;
+//     },
+//     stop(finalMessage?: string) {
+//       clearInterval(timer);
+//       Deno.stdout.write(encoder.encode("\r"));
+//       if (finalMessage) {
+//         console.log(finalMessage);
+//       } else {
+//         console.log("");
+//       }
+//     }
+//   };
+// }
+// Enhanced progress spinner with percentage and ETA in the format:
+// "Generating Preview CSV [spinner] - X% (eta MM:SS)"
+function createProgressSpinner(baseMessage: string) {
+  const encoder = new TextEncoder();
+  const frames = ["|", "/", "-", "\\"];
+  let i = 0;
+  let suffix = "";
+
+  const timer = setInterval(() => {
+    const frame = frames[i = (i + 1) % frames.length];
+    Deno.stdout.write(encoder.encode(`\r${baseMessage} [${frame}]${suffix}`));
+  }, 120);
+
+  return {
+    updateProgress(processed: number, total: number, etaMs?: number) {
+      const percentage = Math.max(0, Math.min(100, Math.round((processed / Math.max(total, 1)) * 100)));
+      let s = ` - ${percentage}%`;
+      if (etaMs !== undefined && etaMs > 0) {
+        const etaSeconds = Math.ceil(etaMs / 1000);
+        const minutes = Math.floor(etaSeconds / 60);
+        const seconds = etaSeconds % 60;
+        const etaFormat = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        s += ` (eta ${etaFormat})`;
+      }
+      suffix = s;
+    },
+    stop(finalMessage?: string) {
+      clearInterval(timer);
+      Deno.stdout.write(encoder.encode("\r"));
+      if (finalMessage) {
+        console.log(finalMessage);
+      } else {
+        console.log("");
+      }
+    }
+  };
+}
+
+// Batched CSV writer with progress and ETA
+async function writeMergedCSVWithProgress(
+  filePath: string,
+  summary: DeletionResultSummary,
+  report: DryRunReportItem[],
+  batchSize = 500,
+): Promise<void> {
+  const start = performance.now();
+  const spinner = createProgressSpinner("Generating Preview CSV");
+  const encoder = new TextEncoder();
+  const f = await Deno.open(filePath, { create: true, write: true, truncate: true });
+  try {
+    const writeLine = async (line: string) => {
+      await f.write(encoder.encode(line + "\n"));
+    };
+
+    // Summary section
+    await writeLine("Summary");
+    await writeLine(["Versions Deleted","Components Deleted","Deleted Size (MB)","Failures"].join(","));
+    const deletedMB = (summary.bytesDeleted / (1024 * 1024)).toFixed(2);
+    await writeLine([
+      summary.versionsDeleted.toString(),
+      summary.componentsDeleted.toString(),
+      deletedMB,
+      summary.failures.length.toString(),
+    ].join(","));
+
+    if (summary.failures.length > 0) {
+      await writeLine("");
+      await writeLine("Failures");
+      await writeLine("ID,Reason");
+      for (const fItem of summary.failures) {
+        await writeLine(`${fItem.id},${sanitizeCsv(fItem.reason)}`);
+      }
+    }
+
+    // Separator and details header
+    await writeLine("");
+    await writeLine("-----");
+    await writeLine("");
+    await writeLine("Details");
+    await writeLine(["Operation","Asset Version ID","Asset Version Label","Shot Name","Status","User","Component ID","Component Name","Component Type","Size (MB)","Locations"].join(","));
+
+    // Details - process in batches
+    const total = report.length;
+    let processed = 0;
+    while (processed < total) {
+      const chunk = report.slice(processed, processed + batchSize);
+      const lines: string[] = [];
+      for (const item of chunk) {
+        const sizeMB = item.size != null ? (item.size / (1024 * 1024)).toFixed(2) : "";
+        const row = [
+          item.operation || "",
+          item.assetVersionId || "",
+          sanitizeCsv(item.assetVersionLabel),
+          sanitizeCsv(item.shotName),
+          sanitizeCsv(item.status),
+          sanitizeCsv(item.user),
+          item.componentId || "",
+          sanitizeCsv(item.componentName),
+          sanitizeCsv(item.componentType),
+          sizeMB,
+          sanitizeCsv(item.locations?.join("; ")),
+        ];
+        lines.push(row.join(","));
+      }
+      await f.write(encoder.encode(lines.join("\n") + (lines.length ? "\n" : "")));
+      processed += chunk.length;
+
+      const elapsed = performance.now() - start;
+      const avgPerItem = processed > 0 ? elapsed / processed : 0;
+      const remaining = Math.max(total - processed, 0);
+      const etaMs = avgPerItem > 0 ? Math.round(avgPerItem * remaining) : undefined;
+      spinner.updateProgress(processed, total, etaMs);
+    }
+  } finally {
+    try { f.close(); } catch {}
+    spinner.stop();
+  }
 }
 
 /**
@@ -124,14 +282,15 @@ export async function deleteMediaTool(
   debug("Starting Delete Media Tool");
 
   // Enforce project-scoped only
-  console.log(chalk.blue("\nDelete Media Tool"));
-  console.log(chalk.yellow("All modes provide a final confirmation and preview before any deletion occurs."));
+  console.log(chalk.blue("\n📋 Delete Media Tool"));
+  console.log(chalk.green("🔒 Safe actions are clearly marked - actual deletion only occurs after final confirmation."));
+  console.log(chalk.blue("📊 Progress Timeline: Select Mode → Preview (safe) → Export CSV (safe) → Confirm → Execute"));
 
   const mode = (await Select.prompt({
-    message: "Select deletion mode",
+    message: "Select deletion mode (safe - no deletion yet)",
     options: [
       { name: "Delete whole asset versions", value: "versions" },
-      { name: "Delete components only (original/encoded)", value: "components" },
+      { name: "Delete components only (original/encoded) (safe)", value: "components" },
       { name: "Age-based cleanup", value: "age" },
       { name: "Filter-based deletion", value: "filter" },
     ],
@@ -188,8 +347,7 @@ export async function deleteMediaTool(
       const mergedPath = `${downloadsDir}/delete-media-preview-${timestamp}.csv`;
 
       try {
-        const mergedCsv = formatMergedCSV(summary, report);
-        await Deno.writeTextFile(mergedPath, mergedCsv);
+        await writeMergedCSVWithProgress(mergedPath, summary, report);
         console.log(chalk.green("\n📝 Dry-run export created:"));
         console.log(` - Merged: ${mergedPath}`);
       } catch (err) {
@@ -407,8 +565,7 @@ export async function deleteMediaTool(
       const mergedPath = `${downloadsDir}/delete-media-components-preview-${timestamp}.csv`;
 
       try {
-        const mergedCsv = formatMergedCSV(summary, report);
-        await Deno.writeTextFile(mergedPath, mergedCsv);
+        await writeMergedCSVWithProgress(mergedPath, summary, report);
         console.log(chalk.green("\n📝 Dry-run export created:"));
         console.log(` - Merged: ${mergedPath}`);
       } catch (err) {
@@ -522,14 +679,14 @@ export async function deleteMediaTool(
       message: "What should be deleted from matched asset versions?",
       options: [
         { name: "Delete whole asset versions", value: "versions" },
-        { name: "Delete components only", value: "components" },
+        { name: "Delete components only (safe)", value: "components" },
       ],
     });
 
     let componentChoice: ComponentDeletionChoice = "all";
     if (deletionType === "components") {
       componentChoice = await Select.prompt({
-        message: "Which components to delete?",
+        message: "Which components to delete? (safe)",
         options: [
           { name: "All components", value: "all" },
           { name: "Only original", value: "original_only" },
@@ -597,8 +754,7 @@ export async function deleteMediaTool(
       const mergedPath = `${downloadsDir}/delete-media-age-preview-${timestamp}.csv`;
 
       try {
-        const mergedCsv = formatMergedCSV(summary, report);
-        await Deno.writeTextFile(mergedPath, mergedCsv);
+        await writeMergedCSVWithProgress(mergedPath, summary, report);
         console.log(chalk.green("\n📝 Dry-run export created:"));
         console.log(` - Merged: ${mergedPath}`);
       } catch (err) {
@@ -768,14 +924,14 @@ export async function deleteMediaTool(
       message: "What should be deleted from matched asset versions?",
       options: [
         { name: "Delete whole asset versions", value: "versions" },
-        { name: "Delete components only", value: "components" },
+        { name: "Delete components only (safe)", value: "components" },
       ],
     });
 
     let componentChoice: ComponentDeletionChoice = "all";
     if (deletionType === "components") {
       componentChoice = await Select.prompt({
-        message: "Which components to delete?",
+        message: "Which components to delete? (safe)",
         options: [
           { name: "All components", value: "all" },
           { name: "Only original", value: "original_only" },
@@ -816,7 +972,7 @@ export async function deleteMediaTool(
       const mergedPath = `${downloadsDir}/delete-media-filter-preview-${timestamp}.csv`;
       try {
         const mergedCsv = formatMergedCSV(summary, report);
-        await Deno.writeTextFile(mergedPath, mergedCsv);
+        await writeMergedCSVWithProgress(mergedPath, summary, report);
         console.log(chalk.green("\n📝 Dry-run export created:"));
         console.log(` - Merged: ${mergedPath}`);
       } catch (err) {
