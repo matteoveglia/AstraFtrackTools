@@ -331,10 +331,10 @@ export class AdvancedSelectionService {
     const regexPatterns = patterns.filter(p => p.startsWith('/') && p.endsWith('/'));
     if (regexPatterns.length > 0) {
       return WildcardResolver.filterByRegex(
-        items,
+        items as unknown as Array<Record<string, unknown>>,
         regexPatterns,
-        (item) => item.name,
-      );
+        (item) => (item as unknown as SelectionItem).name,
+      ) as unknown as SelectionItem[];
     }
 
     return items;
