@@ -235,7 +235,9 @@ async function writeMergedCSVWithProgress(
   } finally {
     try {
       f.close();
-    } catch {}
+    } catch {
+      // Ignore write errors for progress file
+    }
     spinner.stop();
   }
 }
@@ -260,16 +262,17 @@ async function selectFromList(
   }
 
   // 2) Group lists by category (similar to manageLists)
-  const listsByCategory: Record<string, any[]> = {};
-  for (const list of lists) {
-    const categoryName = list.category?.name || "Uncategorized";
+  const listsByCategory: Record<string, Array<Record<string, unknown>>> = {};
+  for (const list of lists as Array<Record<string, unknown>>) {
+    const category = list.category as Record<string, unknown> | undefined;
+    const categoryName = category?.name as string || "Uncategorized";
     if (!listsByCategory[categoryName]) listsByCategory[categoryName] = [];
     listsByCategory[categoryName].push(list);
   }
   // Sort lists within each category
   for (const categoryName of Object.keys(listsByCategory)) {
     listsByCategory[categoryName].sort((a, b) =>
-      (a.name || "").localeCompare(b.name || "")
+      (a.name as string || "").localeCompare(b.name as string || "")
     );
   }
 
@@ -291,8 +294,8 @@ async function selectFromList(
   // 4) List selection within category (no pagination for now)
   const categoryLists = listsByCategory[selectedCategory];
   const listChoices = categoryLists.map((list) => ({
-    name: `${list.name} (${list.project?.name || "No Project"})`,
-    value: list.id,
+    name: `${list.name as string} (${(list.project as Record<string, unknown>)?.name as string || "No Project"})`,
+    value: list.id as string,
   }));
 
   const selectedListId = await Select.prompt({
@@ -385,7 +388,7 @@ export async function deleteMediaTool(
         message: "Enter AssetVersion IDs to preview delete (comma-separated)",
         default: "",
       });
-      versionIds = idsRaw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(
+      versionIds = idsRaw.split(/[\,\s]+/).map((s) => s.trim()).filter(
         Boolean,
       );
 
@@ -554,7 +557,7 @@ export async function deleteMediaTool(
           "Enter AssetVersion IDs to preview component delete (comma-separated)",
         default: "",
       });
-      versionIds = idsRaw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(
+      versionIds = idsRaw.split(/[\,\s]+/).map((s) => s.trim()).filter(
         Boolean,
       );
     } else if (inputMethod === "shots") {
@@ -564,7 +567,7 @@ export async function deleteMediaTool(
           "Enter shot name(s) to find asset versions (comma-separated). Tip: use wildcard * (e.g., SHOT02*)",
         default: "",
       });
-      const shotNames = shotNamesRaw.split(/[\,\s\u001f]+/).map((s) => s.trim())
+      const shotNames = shotNamesRaw.split(/[\,\s]+/).map((s) => s.trim())
         .filter(Boolean);
 
       if (shotNames.length === 0) {
@@ -601,9 +604,11 @@ export async function deleteMediaTool(
       }
 
       // Display found versions and let user select
-      const versionOptions = (result.data as any[]).map((version: any) => {
-        const shotName = version.asset?.parent?.name || "Unknown";
-        const assetName = version.asset?.name || "Unknown";
+      const versionOptions = (result.data as Array<Record<string, unknown>>).map((version) => {
+        const asset = version.asset as Record<string, unknown> | undefined;
+          const parent = asset?.parent as Record<string, unknown> | undefined;
+          const shotName = parent?.name as string || "Unknown";
+          const assetName = asset?.name as string || "Unknown";
         const versionNum = version.version || "?";
         return {
           name: `${shotName} - ${assetName} v${versionNum} - ${version.id}`,
@@ -620,7 +625,7 @@ export async function deleteMediaTool(
       }) as string[];
 
       if (selectedVersions.includes("all")) {
-        versionIds = (result.data as any[]).map((v: any) => v.id);
+        versionIds = (result.data as Array<{ id: string }>).map((v) => v.id as string);
       } else {
         versionIds = selectedVersions.filter((id) => id !== "all");
       }
@@ -691,12 +696,14 @@ export async function deleteMediaTool(
           versionIds.map((id) => `"${id}"`).join(", ")
         })`;
         const details = await queryService.queryAssetVersions(filter);
-        for (const v of details.data as any[]) {
-          const shotName = v.asset?.parent?.name || "Unknown";
-          const assetName = v.asset?.name || "Unknown";
+        for (const v of details.data as Array<Record<string, unknown>>) {
+          const asset = v.asset as Record<string, unknown> | undefined;
+          const parent = asset?.parent as Record<string, unknown> | undefined;
+          const shotName = parent?.name as string || "Unknown";
+          const assetName = asset?.name as string || "Unknown";
           const versionNum = v.version || "?";
           displayMap.set(
-            v.id,
+            v.id as string,
             `${shotName} - ${assetName} v${versionNum} - ${v.id}`,
           );
         }
@@ -934,7 +941,7 @@ export async function deleteMediaTool(
       return;
     }
 
-    const versionIds = (result.data as any[]).map((v: any) => v.id);
+    const versionIds = (result.data as Array<{ id: string }>).map((v) => v.id);
     console.log(
       chalk.green(
         `Found ${versionIds.length} asset versions matching age criteria.`,
@@ -1091,7 +1098,7 @@ export async function deleteMediaTool(
         message: "Enter status name(s) (comma-separated)",
         default: "",
       });
-      statusNames = raw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(
+      statusNames = raw.split(/[\,\s]+/).map((s) => s.trim()).filter(
         Boolean,
       );
     }
@@ -1101,7 +1108,7 @@ export async function deleteMediaTool(
         message: "Enter username(s) (comma-separated)",
         default: "",
       });
-      usernames = raw.split(/[\,\s\u001f]+/).map((s) => s.trim()).filter(
+      usernames = raw.split(/[\,\s]+/).map((s) => s.trim()).filter(
         Boolean,
       );
     }
@@ -1212,7 +1219,7 @@ export async function deleteMediaTool(
       return;
     }
 
-    const versionIds = (avResult.data as any[]).map((v: any) => v.id);
+    const versionIds = (avResult.data as Array<{ id: string }>).map((v) => v.id);
     console.log(
       chalk.green(
         `Found ${versionIds.length} asset versions matching filters.`,
@@ -1282,7 +1289,7 @@ export async function deleteMediaTool(
       const mergedPath =
         `${downloadsDir}/delete-media-filter-preview-${timestamp}.csv`;
       try {
-        const mergedCsv = formatMergedCSV(summary, report);
+        const _mergedCsv = formatMergedCSV(summary, report);
         await writeMergedCSVWithProgress(mergedPath, summary, report);
         console.log(chalk.green("\n📝 Dry-run export created:"));
         console.log(` - Merged: ${mergedPath}`);

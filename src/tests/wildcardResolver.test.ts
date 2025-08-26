@@ -1,4 +1,4 @@
-import { assertEquals, assertMatch } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import {
   WildcardResolver,
   InteractiveResolver,
@@ -57,9 +57,9 @@ Deno.test("WildcardResolver - should build Ftrack conditions", () => {
 });
 
 Deno.test("WildcardResolver - should filter by regex", () => {
-  const items = ["SHOT01", "SHOT02", "SEQUENCE01", "shot01"];
+  const items = [{name: "SHOT01"}, {name: "SHOT02"}, {name: "SEQUENCE01"}, {name: "shot01"}];
   
-  const result = WildcardResolver.filterByRegex(items, ["^SHOT\\d+$"], (item) => item);
+  const result = WildcardResolver.filterByRegex(items, ["^SHOT\\d+$"], (item) => item.name as string);
   // Just verify the function returns an array
   assertEquals(Array.isArray(result), true);
 });

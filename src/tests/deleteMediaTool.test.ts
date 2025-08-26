@@ -1,11 +1,10 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { Session } from "@ftrack/api";
-import { deleteMediaTool } from "../tools/deleteMediaTool.ts";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
+import { SessionService } from "../services/session.ts";
 import { DeletionService } from "../services/deletionService.ts";
 import type {
-  DeleteMode,
   ComponentDeletionChoice,
   DeletionResultSummary,
   DryRunReportItem,
@@ -85,7 +84,7 @@ function createMockSession(queryResponses: unknown[] = []) {
 }
 
 // Mock services
-function createMockProjectContextService(isGlobal = false) {
+function _createMockProjectContextService(isGlobal = false) {
   return {
     getContext: () => ({
       isGlobal,
@@ -112,23 +111,23 @@ class MockDeletionService extends DeletionService {
   constructor() {
     super(
       createMockSession(),
-      {} as any,
+      new SessionService(createMockSession()),
       createMockQueryService(),
     );
   }
 
-  override async deleteAssetVersions(
+  override deleteAssetVersions(
     versionIds: string[],
     options: { dryRun: boolean },
   ): Promise<{ report: DryRunReportItem[]; summary: DeletionResultSummary }> {
     if (options.dryRun) {
-      return {
+      return Promise.resolve({
         report: mockDryRunReport,
         summary: mockDeletionSummary,
-      };
+      });
     }
     // Simulate actual deletion
-    return {
+    return Promise.resolve({
       report: [],
       summary: {
         ...mockDeletionSummary,
@@ -136,15 +135,15 @@ class MockDeletionService extends DeletionService {
           ? [{ id: "error-version", reason: "Permission denied" }]
           : [],
       },
-    };
+    });
   }
 
-  override async deleteComponents(
+  override deleteComponents(
     versionIdToComponentChoice: Map<string, ComponentDeletionChoice>,
     options: { dryRun: boolean },
   ): Promise<{ report: DryRunReportItem[]; summary: DeletionResultSummary }> {
     if (options.dryRun) {
-      return {
+      return Promise.resolve({
         report: mockDryRunReport.map((item) => ({
           ...item,
           operation: "delete_components" as const,
@@ -156,9 +155,9 @@ class MockDeletionService extends DeletionService {
           ...mockDeletionSummary,
           versionsDeleted: 0,
         },
-      };
+      });
     }
-    return {
+    return Promise.resolve({
       report: [],
       summary: {
         versionsDeleted: 0,
@@ -166,7 +165,7 @@ class MockDeletionService extends DeletionService {
         bytesDeleted: versionIdToComponentChoice.size * 1048576,
         failures: [],
       },
-    };
+    });
   }
 }
 
@@ -277,17 +276,17 @@ Deno.test("DeletionService - should handle network errors gracefully", async () 
   class NetworkErrorDeletionService extends DeletionService {
     constructor() {
       super(
-        createMockSession(),
-        {} as any,
-        createMockQueryService(),
-      );
+          createMockSession(),
+          new SessionService(createMockSession()),
+          createMockQueryService(),
+        );
     }
 
-    override async deleteAssetVersions(
-      versionIds: string[],
-      options: { dryRun: boolean },
+    override deleteAssetVersions(
+      _versionIds: string[],
+      _options: { dryRun: boolean },
     ): Promise<{ report: DryRunReportItem[]; summary: DeletionResultSummary }> {
-      throw new Error("Network timeout");
+      return Promise.reject(new Error("Network timeout"));
     }
   }
   
@@ -331,10 +330,10 @@ Deno.test("DeletionService - should handle empty results gracefully", async () =
   } as unknown as Session;
   
   const deletionService = new DeletionService(
-    mockSession,
-    {} as any,
-    createMockQueryService(),
-  );
+      mockSession,
+      new SessionService(createMockSession()),
+      createMockQueryService(),
+    );
   
   const result = await deletionService.deleteAssetVersions(
     ["nonexistent-version"],

@@ -16,7 +16,7 @@ export interface SelectionItem {
   id: string;
   name: string;
   description?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SelectionOptions {
@@ -96,7 +96,7 @@ export class AdvancedSelectionService {
    * Search-based selection with advanced pattern matching
    */
   private async searchBasedSelection(
-    options: SelectionOptions,
+    _options: SelectionOptions,
   ): Promise<SelectionResult> {
     console.log(chalk.blue("\n🔍 Pattern-Based Search"));
     console.log(chalk.yellow("Supported patterns:"));
@@ -151,7 +151,7 @@ export class AdvancedSelectionService {
       } else if (action === "select") {
         const selected = await this.paginatedSelection(
           searchResults,
-          options,
+          _options,
           "Select asset versions:",
         );
         return {
@@ -181,12 +181,17 @@ export class AdvancedSelectionService {
     }
 
     // Enhanced list selection with search
-    const listItems: SelectionItem[] = lists.map(list => ({
-      id: list.id,
-      name: list.name || "Unnamed List",
-      description: `${list.category?.name || "Uncategorized"} - ${list.project?.name || "No Project"}`,
-      metadata: { category: list.category?.name, project: list.project?.name },
-    }));
+    const listItems: SelectionItem[] = lists.map(list => {
+      const listRecord = list as Record<string, unknown>;
+      const category = listRecord.category as Record<string, unknown> | undefined;
+      const project = listRecord.project as Record<string, unknown> | undefined;
+      return {
+        id: list.id,
+        name: list.name || "Unnamed List",
+        description: `${category?.name as string || "Uncategorized"} - ${project?.name as string || "No Project"}`,
+        metadata: { category: category?.name as string, project: project?.name as string },
+      };
+    });
 
     const selectedLists = await this.paginatedSelection(
       listItems,
@@ -227,7 +232,7 @@ export class AdvancedSelectionService {
    * Direct ID input with validation and suggestions
    */
   private async directIdSelection(
-    options: SelectionOptions,
+    _options: SelectionOptions,
   ): Promise<SelectionResult> {
     const idsInput = await Input.prompt({
       message: "Enter AssetVersion IDs (comma-separated):",
@@ -301,21 +306,23 @@ export class AdvancedSelectionService {
     if (!result.data || result.data.length === 0) return [];
 
     // Convert to SelectionItems
-    const items: SelectionItem[] = (result.data as any[]).map((version: any) => {
-      const shotName = version.asset?.parent?.name || "Unknown";
-      const assetName = version.asset?.name || "Unknown";
+    const items: SelectionItem[] = (result.data as Array<Record<string, unknown>>).map((version) => {
+      const asset = version.asset as Record<string, unknown> | undefined;
+      const parent = asset?.parent as Record<string, unknown> | undefined;
+      const shotName = parent?.name as string || "Unknown";
+      const assetName = asset?.name as string || "Unknown";
       const versionNum = version.version || "?";
       
       return {
-        id: version.id,
+        id: version.id as string,
         name: `${shotName} - ${assetName} v${versionNum}`,
         description: `ID: ${version.id}`,
         metadata: {
           shotName,
           assetName,
           version: versionNum,
-          status: version.status?.name,
-          user: version.user?.username,
+          status: (version.status as Record<string, unknown> | undefined)?.name as string,
+          user: (version.user as Record<string, unknown> | undefined)?.username as string,
         },
       };
     });
@@ -464,21 +471,23 @@ export class AdvancedSelectionService {
       
       if (!result.data) return [];
 
-      return (result.data as any[]).map((version: any) => {
-        const shotName = version.asset?.parent?.name || "Unknown";
-        const assetName = version.asset?.name || "Unknown";
+      return (result.data as Array<Record<string, unknown>>).map((version) => {
+        const asset = version.asset as Record<string, unknown> | undefined;
+        const parent = asset?.parent as Record<string, unknown> | undefined;
+        const shotName = parent?.name as string || "Unknown";
+        const assetName = asset?.name as string || "Unknown";
         const versionNum = version.version || "?";
         
         return {
-          id: version.id,
+          id: version.id as string,
           name: `${shotName} - ${assetName} v${versionNum}`,
-          description: `Status: ${version.status?.name || "Unknown"} | User: ${version.user?.username || "Unknown"}`,
+          description: `Status: ${(version.status as Record<string, unknown> | undefined)?.name as string || "Unknown"} | User: ${(version.user as Record<string, unknown> | undefined)?.username as string || "Unknown"}`,
           metadata: {
             shotName,
             assetName,
             version: versionNum,
-            status: version.status?.name,
-            user: version.user?.username,
+            status: (version.status as Record<string, unknown> | undefined)?.name as string,
+            user: (version.user as Record<string, unknown> | undefined)?.username as string,
             date: version.date,
           },
         };
@@ -498,9 +507,11 @@ export class AdvancedSelectionService {
       const result = await this.queryService.queryAssetVersions("");
       if (!result.data) return [];
 
-      const candidates = (result.data as any[]).map((v: any) => 
-        v.asset?.parent?.name || ""
-      ).filter(Boolean);
+      const candidates = (result.data as Array<Record<string, unknown>>).map((v) => {
+        const asset = v.asset as Record<string, unknown> | undefined;
+        const parent = asset?.parent as Record<string, unknown> | undefined;
+        return parent?.name as string || "";
+      }).filter(Boolean);
 
       const suggestions = new Set<string>();
       for (const pattern of patterns) {

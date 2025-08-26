@@ -120,10 +120,10 @@ export class WildcardResolver {
    * Filter results using regex patterns (post-query filtering)
    */
   static filterByRegex(
-    items: any[],
+    items: Array<Record<string, unknown>>,
     patterns: string[],
-    fieldExtractor: (item: any) => string,
-  ): any[] {
+    fieldExtractor: (item: Record<string, unknown>) => string,
+  ): Array<Record<string, unknown>> {
     const regexPatterns = patterns
       .filter(p => this.detectPatternType(p) === 'regex')
       .map(p => {
@@ -171,11 +171,12 @@ export class WildcardResolver {
           ? { value: candidate, score: 1.0, matchType: 'exact' }
           : null;
           
-      case 'wildcard':
+      case 'wildcard': {
         const wildcardScore = this.matchWildcard(pattern, candidate);
         return wildcardScore > 0
           ? { value: candidate, score: wildcardScore, matchType: 'wildcard' }
           : null;
+      }
           
       case 'regex':
         if (!options.enableRegex) return null;

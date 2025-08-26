@@ -73,12 +73,12 @@ export class DeletionService {
           const versionReport: DryRunReportItem = {
             operation: "delete_version",
             assetVersionId: versionId,
-            assetVersionLabel: `${versionDetails.asset?.name || "Unknown"} v${
-              versionDetails.version || "?"
+            assetVersionLabel: `${(versionDetails.asset as Record<string, unknown> | undefined)?.name as string || "Unknown"} v${
+              versionDetails.version as string || "?"
             }`,
-            shotName: versionDetails.asset?.parent?.name || undefined,
-            status: versionDetails.status?.name || undefined,
-            user: versionDetails.user?.username || undefined,
+            shotName: ((versionDetails.asset as Record<string, unknown> | undefined)?.parent as Record<string, unknown> | undefined)?.name as string || undefined,
+            status: (versionDetails.status as Record<string, unknown> | undefined)?.name as string || undefined,
+            user: (versionDetails.user as Record<string, unknown> | undefined)?.username as string || undefined,
             size: versionSizeBytes,
             locations: this.extractLocationIdentifiers(components),
           };
@@ -87,10 +87,10 @@ export class DeletionService {
           const componentReports: DryRunReportItem[] = components.map((component) => ({
             operation: "delete_components",
             assetVersionId: versionId,
-            assetVersionLabel: `${versionDetails.asset?.name || "Unknown"} v${
-              versionDetails.version || "?"
+            assetVersionLabel: `${(versionDetails.asset as Record<string, unknown> | undefined)?.name as string || "Unknown"} v${
+              versionDetails.version as string || "?"
             }`,
-            shotName: versionDetails.asset?.parent?.name || undefined,
+            shotName: ((versionDetails.asset as Record<string, unknown> | undefined)?.parent as Record<string, unknown> | undefined)?.name as string || undefined,
             componentId: component.id,
             componentName: component.name,
             componentType: this.componentService.identifyComponentType(
@@ -200,10 +200,10 @@ export class DeletionService {
 
           // Filter components based on user choice and exclude thumbnails
           const componentsToDelete = this.filterComponentsByChoice(
-            allComponents,
-            choice,
-            versionDetails.thumbnail_id,
-          );
+              allComponents,
+              choice,
+              versionDetails.thumbnail_id as string | undefined,
+            );
 
           // Calculate total size of components to delete
           const versionSizeBytes = componentsToDelete.reduce(
@@ -215,12 +215,12 @@ export class DeletionService {
           const componentReports: DryRunReportItem[] = componentsToDelete.map((component) => ({
             operation: "delete_components",
             assetVersionId: versionId,
-            assetVersionLabel: `${versionDetails.asset?.name || "Unknown"} v${
-              versionDetails.version || "?"
+            assetVersionLabel: `${(versionDetails.asset as Record<string, unknown> | undefined)?.name as string || "Unknown"} v${
+              versionDetails.version as string || "?"
             }`,
-            shotName: versionDetails.asset?.parent?.name || undefined,
-            status: versionDetails.status?.name || undefined,
-            user: versionDetails.user?.username || undefined,
+            shotName: ((versionDetails.asset as Record<string, unknown> | undefined)?.parent as Record<string, unknown> | undefined)?.name as string || undefined,
+            status: (versionDetails.status as Record<string, unknown> | undefined)?.name as string || undefined,
+            user: (versionDetails.user as Record<string, unknown> | undefined)?.username as string || undefined,
             componentId: component.id,
             componentName: component.name,
             componentType: this.componentService.identifyComponentType(
@@ -293,7 +293,7 @@ export class DeletionService {
   /**
    * Fetch version details including thumbnail_id for safety checks
    */
-  private async fetchVersionDetails(versionId: string): Promise<any> {
+  private async fetchVersionDetails(versionId: string): Promise<Record<string, unknown>> {
     try {
       // Use QueryService which handles project scoping properly
       const result = await this.queryService.queryAssetVersions(
@@ -301,7 +301,7 @@ export class DeletionService {
       );
 
       if (result.data && result.data.length > 0) {
-        const version = result.data[0] as Record<string, any>;
+        const version = result.data[0] as Record<string, unknown>;
 
         // If we need additional fields not included in queryAssetVersions, fetch them separately
         const additionalQuery = `
@@ -314,7 +314,7 @@ export class DeletionService {
         if (additionalResult.data && additionalResult.data.length > 0) {
           const additionalData = additionalResult.data[0] as Record<
             string,
-            any
+            Record<string, unknown>
           >;
           return {
             ...version,
@@ -328,7 +328,7 @@ export class DeletionService {
         return version;
       }
 
-      return null;
+      return {} as Record<string, unknown>;
     } catch (error) {
       debug(`Error fetching version details for ${versionId}: ${error}`);
       throw error;
@@ -344,7 +344,7 @@ export class DeletionService {
     thumbnailId?: string,
   ): Component[] {
     // First, exclude thumbnail component if present
-    let filteredComponents = components.filter((comp) =>
+    const filteredComponents = components.filter((comp) =>
       comp.id !== thumbnailId
     );
 
@@ -504,7 +504,7 @@ export class DeletionService {
             const componentsToDelete = this.filterComponentsByChoice(
               allComponents,
               choice,
-              versionDetails.thumbnail_id,
+              versionDetails.thumbnail_id as string | undefined,
             );
 
             // Delete components concurrently for this version

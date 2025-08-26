@@ -8,7 +8,7 @@ export class ListService {
     private projectContextService: ProjectContextService,
   ) {}
 
-  async fetchAssetVersionLists(): Promise<any[]> {
+  async fetchAssetVersionLists(): Promise<Array<{ id: string; name: string }>> {
     // Fetch all lists within current project scope (or globally if in global mode)
     const listsQuery = this.projectContextService.buildProjectScopedQuery(`
       select id, name, category.id, category.name, project.name
@@ -16,7 +16,7 @@ export class ListService {
       order by category.name, name
     `);
     const listsResponse = await this.session.query(listsQuery);
-    return (listsResponse?.data || []) as any[];
+    return (listsResponse?.data || []) as Array<{ id: string; name: string }>;
   }
 
   async getAssetVersionIdsFromList(listId: string): Promise<string[]> {
@@ -29,7 +29,7 @@ export class ListService {
       where list_id is "${listId}"
     `);
 
-    const entityIds = (listObjectsResponse?.data || []).map((lo: any) =>
+    const entityIds = (listObjectsResponse?.data || []).map((lo: Record<string, unknown>) =>
       lo.entity_id
     ).filter((id: unknown): id is string => typeof id === "string");
     if (entityIds.length === 0) return [];
@@ -48,7 +48,7 @@ export class ListService {
         where ${filter}
       `);
       const avResponse = await this.session.query(avQuery);
-      const chunkIds = (avResponse?.data || []).map((av: any) => av.id).filter((
+      const chunkIds = (avResponse?.data || []).map((av: Record<string, unknown>) => av.id as string).filter((
         id: unknown,
       ): id is string => typeof id === "string");
       versionIds.push(...chunkIds);
