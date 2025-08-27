@@ -82,11 +82,11 @@ export async function downloadMediaTool(
     await debugToFile(DEBUG_LOG_PATH, "Download mode selected:", downloadMode);
 
     if (downloadMode === "single") {
-      await handleSingleAssetVersionDownload(
-        componentService,
-        mediaDownloadService,
-        queryService,
-      );
+    await handleSingleVersionDownload(
+      componentService,
+      mediaDownloadService,
+      queryService,
+    );
     } else {
       await handleMultipleShotsDownload(
         componentService,
@@ -113,7 +113,7 @@ async function selectDownloadMode(): Promise<"single" | "multiple"> {
   const mode = await Select.prompt({
     message: "Download media from:",
     options: [
-      { name: "A) Single asset version (enter ID)", value: "single" as const },
+      { name: "A) Single version (enter ID)", value: "single" as const },
       { name: "B) Multiple shots (fuzzy search)", value: "multiple" as const },
     ],
   });
@@ -122,49 +122,49 @@ async function selectDownloadMode(): Promise<"single" | "multiple"> {
 }
 
 /**
- * Handle single asset version download workflow
+ * Handle single version download workflow
  */
-async function handleSingleAssetVersionDownload(
+async function handleSingleVersionDownload(
   componentService: ComponentService,
   mediaDownloadService: MediaDownloadService,
   queryService: QueryService,
 ): Promise<void> {
-  // Get asset version ID from user
-  const assetVersionId = await promptForAssetVersionId();
-  if (!assetVersionId) return;
+  // Get version ID from user
+  const versionId = await promptForVersionId();
+  if (!versionId) return;
 
   await debugToFile(
     DEBUG_LOG_PATH,
-    "Asset version ID entered:",
-    assetVersionId,
+    "Version ID entered:",
+    versionId,
   );
 
-  // Validate and fetch the asset version
-  console.log(`\n🔍 Looking up asset version: ${assetVersionId}`);
+  // Validate and fetch the version
+  console.log(`\n🔍 Looking up version: ${versionId}`);
 
   const assetVersions = await withErrorHandling(
     async () => {
       const result = await queryService.queryAssetVersions(
-        `id is "${assetVersionId}"`,
+        `id is "${versionId}"`,
       );
-      await debugToFile(DEBUG_LOG_PATH, "Asset version query result:", result);
+      await debugToFile(DEBUG_LOG_PATH, "Version query result:", result);
       return result;
     },
     {
-      operation: "fetch asset version",
+      operation: "fetch version",
       entity: "AssetVersion",
-      additionalData: { assetVersionId },
+      additionalData: { versionId },
     },
   );
 
   if (!assetVersions?.data || assetVersions.data.length === 0) {
-    console.log(`❌ Asset version "${assetVersionId}" not found`);
+    console.log(`❌ Version "${versionId}" not found`);
     return;
   }
 
   const assetVersion = assetVersions.data[0] as AssetVersion;
   console.log(
-    `\n📦 Found asset version: ${assetVersion.asset?.name || "Unknown"} v${
+    `\n📦 Found version: ${assetVersion.asset?.name || "Unknown"} v${
       assetVersion.version || "Unknown"
     }`,
   );
@@ -395,9 +395,9 @@ async function configureShotFilters(): Promise<{
 }
 
 /**
- * Configure optional filters for asset version selection
+ * Configure optional filters for version selection
  */
-async function configureAssetVersionFilters(): Promise<{
+async function configureVersionFilters(): Promise<{
   status?: StatusFilter;
   user?: UserFilter;
   date?: DateFilter;
@@ -657,14 +657,14 @@ async function handleMultipleShotsDownload(
     );
   }
 
-  // Ask if user wants to apply asset version filters
-  const applyAssetVersionFilters = await Confirm.prompt({
-    message: "Would you like to apply filters to narrow down assetversion selection?",
+  // Ask if user wants to apply version filters
+  const applyVersionFilters = await Confirm.prompt({
+    message: "Would you like to apply filters to narrow down version selection?",
     default: false,
   });
 
-  // Configure asset version filters if requested
-  const assetVersionFilters = applyAssetVersionFilters ? await configureAssetVersionFilters() : null;
+  // Configure version filters if requested
+  const versionFilters = applyVersionFilters ? await configureVersionFilters() : null;
 
   const shotsWithVersions: Array<{ shot: Shot; latestVersion: AssetVersion }> =
     [];
@@ -674,12 +674,12 @@ async function handleMultipleShotsDownload(
     const filteredVersions = await getFilteredAssetVersionsForShot(
       typedShot.id,
       queryService,
-      assetVersionFilters,
+      versionFilters,
     );
     
     if (filteredVersions.length > 0) {
-      // If asset version filters are applied, show "Found versions" even for single results
-      if (assetVersionFilters) {
+      // If version filters are applied, show "Found versions" even for single results
+      if (versionFilters) {
         const versionList = filteredVersions.map(v => `v${v.version}`).join(", ");
         console.log(`   - ${typedShot.name} (Found versions: ${versionList})`);
         // Add all matching versions for this shot
@@ -690,7 +690,7 @@ async function handleMultipleShotsDownload(
           });
         }
       } else {
-        // No asset version filters applied - show "Latest version"
+        // No version filters applied - show "Latest version"
         const version = filteredVersions[0];
         const versionInfo = `v${version.version}`;
         console.log(`   - ${typedShot.name} (Latest version: ${versionInfo})`);
@@ -944,13 +944,6 @@ async function processShotsWithConcurrency(
 /**
  * Get latest asset version for a shot
  */
-async function getLatestAssetVersionForShot(
-  shotId: string,
-  queryService: QueryService,
-): Promise<AssetVersion | null> {
-  const versions = await getFilteredAssetVersionsForShot(shotId, queryService, null);
-  return versions.length > 0 ? versions[0] : null;
-}
 
 async function getFilteredAssetVersionsForShot(
   shotId: string,
@@ -1047,20 +1040,20 @@ async function getFilteredAssetVersionsForShot(
 }
 
 /**
- * Prompt user for asset version ID
+ * Prompt user for version ID
  */
-async function promptForAssetVersionId(): Promise<string | null> {
-  const assetVersionId = await Input.prompt({
-    message: "Enter asset version ID:",
+async function promptForVersionId(): Promise<string | null> {
+  const versionId = await Input.prompt({
+    message: "Enter version ID:",
     validate: (input: string) => {
       if (!input.trim()) {
-        return "Asset version ID is required";
+        return "Version ID is required";
       }
       return true;
     },
   });
 
-  return assetVersionId.trim() || null;
+  return versionId.trim() || null;
 }
 
 /**

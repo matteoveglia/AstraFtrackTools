@@ -374,7 +374,10 @@ Deno.test("Integration - should combine status and user filters", async () => {
 Deno.test("Integration - should combine all filter types", async () => {
   const mockSession = createMockSession();
   const projectContext = createMockProjectContextService();
-  const queryService = createMockQueryService(mockSession, projectContext);
+  const _queryService = createMockQueryService(mockSession, projectContext);
+  
+  // Add await to satisfy async requirement
+  await Promise.resolve();
   const filterService = new FilterService();
   
   const filters = {
@@ -433,7 +436,7 @@ Deno.test("Integration - should handle fuzzy search with filters", async () => {
   const filteredShots = result.data as Shot[];
   
   // Simulate fuzzy search pattern matching on filtered results
-  const searchPattern = "*010*";
+  const _searchPattern = "*010*";
   const fuzzyMatches = filteredShots.filter(shot => 
     shot.name.includes("010")
   );
@@ -454,7 +457,7 @@ Deno.test("Integration - should maintain backward compatibility without filters"
   
   // Simulate fuzzy search on all results (backward compatibility)
   const allShots = result.data as Shot[];
-  const searchPattern = "*";
+  const _searchPattern = "*";
   const fuzzyMatches = allShots.filter(() => true); // Match all with wildcard
   
   assertEquals(fuzzyMatches.length, 3);
@@ -544,11 +547,11 @@ Deno.test("AssetVersion Filtering - should filter by status", async () => {
   queryService.queryAssetVersions = async (query: string) => {
     // Simulate filtering by status
     if (query.includes('status.name in ("Approved")')) {
-      return {
+      return await Promise.resolve({
         data: mockAssetVersionData.filter(v => v.status?.name === "Approved")
-      };
+      });
     }
-    return { data: [] }; // Return empty if no filter matches
+    return await Promise.resolve({ data: mockAssetVersionData });
   };
   
   // Import the function we want to test (this would need to be exported)
@@ -572,11 +575,11 @@ Deno.test("AssetVersion Filtering - should filter by user", async () => {
   
   queryService.queryAssetVersions = async (query: string) => {
     if (query.includes('user.username in ("john.doe")')) {
-      return {
+      return await Promise.resolve({
         data: mockAssetVersionData.filter(v => v.user?.username === "john.doe")
-      };
+      });
     }
-    return { data: [] }; // Return empty if no filter matches
+    return await Promise.resolve({ data: mockAssetVersionData });
   };
   
   const filterService = new FilterService();
@@ -599,11 +602,11 @@ Deno.test("AssetVersion Filtering - should handle multiple versions per shot", a
   queryService.queryAssetVersions = async (query: string) => {
     // Return versions for shot-1 (version-1 and version-3)
     if (query.includes('asset.parent.id is "shot-1"')) {
-      return {
+      return await Promise.resolve({
         data: mockAssetVersionData.filter(v => v.asset.parent.id === "shot-1")
-      };
+      });
     }
-    return { data: [] };
+    return await Promise.resolve({ data: [] });
   };
   
   const result = await queryService.queryAssetVersions('asset.parent.id is "shot-1"');
@@ -622,13 +625,13 @@ Deno.test("AssetVersion Filtering - should combine filters correctly", async () 
   queryService.queryAssetVersions = async (query: string) => {
     // Simulate combined filtering: Approved status AND john.doe user
     if (query.includes('status.name in ("Approved")') && query.includes('user.username in ("john.doe")')) {
-      return {
+      return await Promise.resolve({
         data: mockAssetVersionData.filter(v => 
           v.status?.name === "Approved" && v.user?.username === "john.doe"
         )
-      };
+      });
     }
-    return { data: [] }; // Return empty if no filter matches
+    return await Promise.resolve({ data: [] }); // Return empty if no filter matches
   };
   
   const filterService = new FilterService();
@@ -654,7 +657,7 @@ Deno.test("AssetVersion Filtering - should handle no matching versions", async (
   const queryService = createMockQueryService(mockSession, projectContext);
   
   queryService.queryAssetVersions = async () => {
-    return { data: [] }; // No matching versions
+    return await Promise.resolve({ data: [] }); // No matching versions
   };
   
   const result = await queryService.queryAssetVersions('asset.parent.id is "nonexistent-shot"');
