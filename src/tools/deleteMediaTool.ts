@@ -375,7 +375,7 @@ export async function deleteMediaTool(
     const inputMethod = await Select.prompt({
       message: "How would you like to specify asset versions?",
       options: [
-        { name: "Enter AssetVersion IDs directly", value: "ids" },
+        { name: "Enter Version IDs directly", value: "ids" },
         { name: "Select-all from list", value: "list" },
         { name: "🔍 Advanced selection (search, wildcards, filters)", value: "advanced" },
       ],
@@ -385,7 +385,7 @@ export async function deleteMediaTool(
 
     if (inputMethod === "ids") {
       const idsRaw = await Input.prompt({
-        message: "Enter AssetVersion IDs to preview delete (comma-separated)",
+        message: "Enter Version IDs to preview delete (comma-separated)",
         default: "",
       });
       versionIds = idsRaw.split(/[\,\s]+/).map((s) => s.trim()).filter(
@@ -444,7 +444,7 @@ export async function deleteMediaTool(
 
     console.log(
       chalk.green(
-        `\nPreview generated for ${versionIds.length} AssetVersion ID(s).`,
+        `\nPreview generated for ${versionIds.length} Version ID(s).`,
       ),
     );
 
@@ -542,7 +542,7 @@ export async function deleteMediaTool(
     const inputMethod = await Select.prompt({
       message: "How would you like to specify asset versions?",
       options: [
-        { name: "Enter AssetVersion IDs directly", value: "ids" },
+        { name: "Enter Version IDs directly", value: "ids" },
         { name: "Search by shot name(s)", value: "shots" },
         { name: "Select-all from list", value: "list" },
         { name: "🔍 Advanced selection (search, wildcards, filters)", value: "advanced" },
@@ -554,7 +554,7 @@ export async function deleteMediaTool(
     if (inputMethod === "ids") {
       const idsRaw = await Input.prompt({
         message:
-          "Enter AssetVersion IDs to preview component delete (comma-separated)",
+          "Enter Version IDs to preview component delete (comma-separated)",
         default: "",
       });
       versionIds = idsRaw.split(/[\,\s]+/).map((s) => s.trim()).filter(
@@ -745,7 +745,7 @@ export async function deleteMediaTool(
 
     console.log(
       chalk.green(
-        `\nPreview generated for ${versionIds.length} AssetVersion ID(s).`,
+        `\nPreview generated for ${versionIds.length} Version ID(s).`,
       ),
     );
 
@@ -977,7 +977,7 @@ export async function deleteMediaTool(
 
     console.log(
       chalk.green(
-        `\nAge-based preview generated for ${versionIds.length} AssetVersion(s).`,
+        `\nAge-based preview generated for ${versionIds.length} Version(s).`,
       ),
     );
 
@@ -1273,7 +1273,7 @@ export async function deleteMediaTool(
 
     console.log(
       chalk.green(
-        `\nFilter-based preview generated for ${versionIds.length} AssetVersion(s).`,
+        `\nFilter-based preview generated for ${versionIds.length} Version(s).`,
       ),
     );
 

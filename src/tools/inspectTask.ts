@@ -124,7 +124,7 @@ export async function inspectTask(
       () => queryService.queryAssetVersions(`task_id is "${taskId}"`),
       {
         operation: "fetch task versions",
-        entity: "AssetVersion",
+        entity: "Version",
         additionalData: { taskId, contextDisplay },
       },
     );

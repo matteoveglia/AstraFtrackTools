@@ -97,7 +97,7 @@ export async function inspectShot(
       () => queryService.queryAssetVersions(`task.parent_id is "${shotId}"`),
       {
         operation: "fetch shot versions",
-        entity: "AssetVersion",
+        entity: "Version",
         additionalData: { shotId, contextDisplay },
       },
     );
