@@ -38,7 +38,7 @@ export async function inspectVersion(
       () => queryService.queryAssetVersions(`id is "${versionId}"`),
       {
         operation: "fetch version details",
-        entity: "AssetVersion",
+        entity: "Version",
         additionalData: { versionId, contextDisplay },
       },
     );
@@ -185,7 +185,7 @@ export async function inspectVersion(
   } catch (error) {
     handleError(error, {
       operation: "inspect version",
-      entity: "AssetVersion",
+      entity: "Version",
       additionalData: { versionId, contextDisplay },
     });
     throw error;

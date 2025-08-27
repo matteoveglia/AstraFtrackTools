@@ -214,7 +214,7 @@ const projectTools: Tool[] = [
   {
     name: "📁 Download Media",
     value: "downloadMedia",
-    description: "Download media files from asset versions",
+    description: "Download media files from Versions", // Versions (human readable) = Asset Versions
   },
   {
     name: "📁 Delete Media",

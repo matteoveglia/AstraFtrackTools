@@ -71,11 +71,11 @@ No custom attributes required - works with standard Ftrack entities (AssetVersio
 
 ### Delete Media Tool
 
-The Delete Media tool provides several ways to select and delete asset versions or components:
+The Delete Media tool provides several ways to select and delete versions or components:
 
 **1. Direct ID Input**
 ```
-Enter asset version IDs: 12345,67890,11111
+Enter version IDs: 12345,67890,11111
 ```
 
 **2. Shot Name Patterns (with wildcards)**

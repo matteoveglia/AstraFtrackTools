@@ -1,6 +1,4 @@
-import { Confirm, Input, Select } from "@cliffy/prompt";
-// Removed: import process from "node:process";
-
+import { Checkbox, Confirm, Input, Select } from "@cliffy/prompt";
 import { debugToFile } from "../utils/debug.ts";
 import { loadPreferences } from "../utils/preferences.ts";
 import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
@@ -11,6 +9,13 @@ import { ComponentService } from "../services/componentService.ts";
 import { MediaDownloadService } from "../services/mediaDownloadService.ts";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
+import { FilterService } from "../services/filterService.ts";
+import type {
+  StatusFilter,
+  UserFilter,
+  DateFilter,
+  CustomAttrFilter,
+} from "../services/filterService.ts";
 
 import type { Session } from "@ftrack/api";
 import type {
@@ -77,11 +82,11 @@ export async function downloadMediaTool(
     await debugToFile(DEBUG_LOG_PATH, "Download mode selected:", downloadMode);
 
     if (downloadMode === "single") {
-      await handleSingleAssetVersionDownload(
-        componentService,
-        mediaDownloadService,
-        queryService,
-      );
+    await handleSingleVersionDownload(
+      componentService,
+      mediaDownloadService,
+      queryService,
+    );
     } else {
       await handleMultipleShotsDownload(
         componentService,
@@ -108,7 +113,7 @@ async function selectDownloadMode(): Promise<"single" | "multiple"> {
   const mode = await Select.prompt({
     message: "Download media from:",
     options: [
-      { name: "A) Single asset version (enter ID)", value: "single" as const },
+      { name: "A) Single version (enter ID)", value: "single" as const },
       { name: "B) Multiple shots (fuzzy search)", value: "multiple" as const },
     ],
   });
@@ -117,49 +122,49 @@ async function selectDownloadMode(): Promise<"single" | "multiple"> {
 }
 
 /**
- * Handle single asset version download workflow
+ * Handle single version download workflow
  */
-async function handleSingleAssetVersionDownload(
+async function handleSingleVersionDownload(
   componentService: ComponentService,
   mediaDownloadService: MediaDownloadService,
   queryService: QueryService,
 ): Promise<void> {
-  // Get asset version ID from user
-  const assetVersionId = await promptForAssetVersionId();
-  if (!assetVersionId) return;
+  // Get version ID from user
+  const versionId = await promptForVersionId();
+  if (!versionId) return;
 
   await debugToFile(
     DEBUG_LOG_PATH,
-    "Asset version ID entered:",
-    assetVersionId,
+    "Version ID entered:",
+    versionId,
   );
 
-  // Validate and fetch the asset version
-  console.log(`\n🔍 Looking up asset version: ${assetVersionId}`);
+  // Validate and fetch the version
+  console.log(`\n🔍 Looking up version: ${versionId}`);
 
   const assetVersions = await withErrorHandling(
     async () => {
       const result = await queryService.queryAssetVersions(
-        `id is "${assetVersionId}"`,
+        `id is "${versionId}"`,
       );
-      await debugToFile(DEBUG_LOG_PATH, "Asset version query result:", result);
+      await debugToFile(DEBUG_LOG_PATH, "Version query result:", result);
       return result;
     },
     {
-      operation: "fetch asset version",
+      operation: "fetch version",
       entity: "AssetVersion",
-      additionalData: { assetVersionId },
+      additionalData: { versionId },
     },
   );
 
   if (!assetVersions?.data || assetVersions.data.length === 0) {
-    console.log(`❌ Asset version "${assetVersionId}" not found`);
+    console.log(`❌ Version "${versionId}" not found`);
     return;
   }
 
   const assetVersion = assetVersions.data[0] as AssetVersion;
   console.log(
-    `\n📦 Found asset version: ${assetVersion.asset?.name || "Unknown"} v${
+    `\n📦 Found version: ${assetVersion.asset?.name || "Unknown"} v${
       assetVersion.version || "Unknown"
     }`,
   );
@@ -208,6 +213,360 @@ async function handleSingleAssetVersionDownload(
 }
 
 /**
+ * Configure optional filters for shot selection
+ */
+async function configureShotFilters(): Promise<{
+  status?: StatusFilter;
+  user?: UserFilter;
+  date?: DateFilter;
+  custom?: CustomAttrFilter[];
+} | null> {
+  // Ask user if they want to apply filters
+  const useFilters = await Confirm.prompt({
+    message: "Would you like to apply filters to narrow down shot selection?",
+    default: false,
+  });
+
+  if (!useFilters) {
+    return null;
+  }
+
+  // Let user select which filter types to configure
+  const filterTypes = await Checkbox.prompt({
+    message: "Select filter types to configure:",
+    options: [
+      { name: "Status", value: "status" },
+      { name: "User", value: "user" },
+      { name: "Date", value: "date" },
+      { name: "Custom Attributes", value: "custom" },
+    ],
+    minOptions: 1,
+  });
+
+  const filters: {
+    status?: StatusFilter;
+    user?: UserFilter;
+    date?: DateFilter;
+    custom?: CustomAttrFilter[];
+  } = {};
+
+  // Configure status filter
+  if (filterTypes.includes("status")) {
+    const statusNames = await Input.prompt({
+      message: "Enter status names (comma-separated, e.g., 'In Progress,Review'):",
+      validate: (input: string) => {
+        if (!input.trim()) {
+          return "At least one status name is required";
+        }
+        return true;
+      },
+    });
+    filters.status = {
+      names: statusNames.split(",").map((name) => name.trim()),
+    };
+  }
+
+  // Configure user filter
+  if (filterTypes.includes("user")) {
+    const usernames = await Input.prompt({
+      message: "Enter usernames (comma-separated, e.g., 'john.doe,jane.smith'):",
+      validate: (input: string) => {
+        if (!input.trim()) {
+          return "At least one username is required";
+        }
+        return true;
+      },
+    });
+    filters.user = {
+      usernames: usernames.split(",").map((name) => name.trim()),
+    };
+  }
+
+  // Configure date filter
+  if (filterTypes.includes("date")) {
+    const dateKind = await Select.prompt({
+      message: "Select date filter type:",
+      options: [
+        { name: "Older than", value: "older" },
+        { name: "Newer than", value: "newer" },
+        { name: "Between dates", value: "between" },
+      ],
+    }) as "older" | "newer" | "between";
+
+    if (dateKind === "older") {
+      const to = await Input.prompt({
+        message: "Enter date (YYYY-MM-DD):",
+        validate: (input: string) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+            return "Please enter date in YYYY-MM-DD format";
+          }
+          return true;
+        },
+      });
+      filters.date = { kind: "older", to };
+    } else if (dateKind === "newer") {
+      const from = await Input.prompt({
+        message: "Enter date (YYYY-MM-DD):",
+        validate: (input: string) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+            return "Please enter date in YYYY-MM-DD format";
+          }
+          return true;
+        },
+      });
+      filters.date = { kind: "newer", from };
+    } else {
+      const from = await Input.prompt({
+        message: "Enter start date (YYYY-MM-DD):",
+        validate: (input: string) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+            return "Please enter date in YYYY-MM-DD format";
+          }
+          return true;
+        },
+      });
+      const to = await Input.prompt({
+        message: "Enter end date (YYYY-MM-DD):",
+        validate: (input: string) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+            return "Please enter date in YYYY-MM-DD format";
+          }
+          return true;
+        },
+      });
+      filters.date = { kind: "between", from, to };
+    }
+  }
+
+  // Configure custom attribute filters
+  if (filterTypes.includes("custom")) {
+    const customFilters: CustomAttrFilter[] = [];
+    let addMore = true;
+
+    while (addMore) {
+      const key = await Input.prompt({
+        message: "Enter custom attribute key:",
+        validate: (input: string) => {
+          if (!input.trim()) {
+            return "Attribute key is required";
+          }
+          return true;
+        },
+      });
+
+      const op = await Select.prompt({
+        message: "Select operator:",
+        options: [
+          { name: "Equals", value: "eq" },
+          { name: "Not equals", value: "neq" },
+          { name: "Contains", value: "contains" },
+          { name: "Is true", value: "true" },
+          { name: "Is false", value: "false" },
+        ],
+      }) as "eq" | "neq" | "contains" | "true" | "false";
+
+      let value: string | number | boolean | undefined;
+      if (op !== "true" && op !== "false") {
+        const valueInput = await Input.prompt({
+          message: "Enter value:",
+          validate: (input: string) => {
+            if (!input.trim()) {
+              return "Value is required";
+            }
+            return true;
+          },
+        });
+        // Try to parse as number, otherwise keep as string
+        value = isNaN(Number(valueInput)) ? valueInput : Number(valueInput);
+      }
+
+      customFilters.push({ key, op, value });
+
+      addMore = await Confirm.prompt({
+        message: "Add another custom attribute filter?",
+        default: false,
+      });
+    }
+
+    filters.custom = customFilters;
+  }
+
+  return filters;
+}
+
+/**
+ * Configure optional filters for version selection
+ */
+async function configureVersionFilters(): Promise<{
+  status?: StatusFilter;
+  user?: UserFilter;
+  date?: DateFilter;
+  custom?: CustomAttrFilter[];
+} | null> {
+  // Let user select which filter types to configure
+  const filterTypes = await Checkbox.prompt({
+    message: "Select filter types to configure:",
+    options: [
+      { name: "Status", value: "status" },
+      { name: "User", value: "user" },
+      { name: "Date", value: "date" },
+      { name: "Custom Attributes", value: "custom" },
+    ],
+    minOptions: 1,
+  });
+
+  const filters: {
+    status?: StatusFilter;
+    user?: UserFilter;
+    date?: DateFilter;
+    custom?: CustomAttrFilter[];
+  } = {};
+
+  // Configure status filter
+  if (filterTypes.includes("status")) {
+    const statusNames = await Input.prompt({
+      message: "Enter status names (comma-separated, e.g., 'In Progress,Review'):",
+      validate: (input: string) => {
+        if (!input.trim()) {
+          return "At least one status name is required";
+        }
+        return true;
+      },
+    });
+    filters.status = {
+      names: statusNames.split(",").map((name) => name.trim()),
+    };
+  }
+
+  // Configure user filter
+  if (filterTypes.includes("user")) {
+    const usernames = await Input.prompt({
+      message: "Enter usernames (comma-separated, e.g., 'john.doe,jane.smith'):",
+      validate: (input: string) => {
+        if (!input.trim()) {
+          return "At least one username is required";
+        }
+        return true;
+      },
+    });
+    filters.user = {
+      usernames: usernames.split(",").map((name) => name.trim()),
+    };
+  }
+
+  // Configure date filter
+  if (filterTypes.includes("date")) {
+    const dateKind = await Select.prompt({
+      message: "Select date filter type:",
+      options: [
+        { name: "Older than", value: "older" },
+        { name: "Newer than", value: "newer" },
+        { name: "Between dates", value: "between" },
+      ],
+    }) as "older" | "newer" | "between";
+
+    if (dateKind === "older") {
+      const to = await Input.prompt({
+        message: "Enter date (YYYY-MM-DD):",
+        validate: (input: string) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+            return "Please enter date in YYYY-MM-DD format";
+          }
+          return true;
+        },
+      });
+      filters.date = { kind: "older", to };
+    } else if (dateKind === "newer") {
+      const from = await Input.prompt({
+        message: "Enter date (YYYY-MM-DD):",
+        validate: (input: string) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+            return "Please enter date in YYYY-MM-DD format";
+          }
+          return true;
+        },
+      });
+      filters.date = { kind: "newer", from };
+    } else {
+      const from = await Input.prompt({
+        message: "Enter start date (YYYY-MM-DD):",
+        validate: (input: string) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+            return "Please enter date in YYYY-MM-DD format";
+          }
+          return true;
+        },
+      });
+      const to = await Input.prompt({
+        message: "Enter end date (YYYY-MM-DD):",
+        validate: (input: string) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+            return "Please enter date in YYYY-MM-DD format";
+          }
+          return true;
+        },
+      });
+      filters.date = { kind: "between", from, to };
+    }
+  }
+
+  // Configure custom attribute filters
+  if (filterTypes.includes("custom")) {
+    const customFilters: CustomAttrFilter[] = [];
+    let addMore = true;
+
+    while (addMore) {
+      const key = await Input.prompt({
+        message: "Enter custom attribute key:",
+        validate: (input: string) => {
+          if (!input.trim()) {
+            return "Attribute key is required";
+          }
+          return true;
+        },
+      });
+
+      const op = await Select.prompt({
+        message: "Select operator:",
+        options: [
+          { name: "Equals", value: "eq" },
+          { name: "Not equals", value: "neq" },
+          { name: "Contains", value: "contains" },
+          { name: "Is true", value: "true" },
+          { name: "Is false", value: "false" },
+        ],
+      }) as "eq" | "neq" | "contains" | "true" | "false";
+
+      let value: string | number | boolean | undefined;
+      if (op !== "true" && op !== "false") {
+        const valueInput = await Input.prompt({
+          message: "Enter value:",
+          validate: (input: string) => {
+            if (!input.trim()) {
+              return "Value is required";
+            }
+            return true;
+          },
+        });
+        // Try to parse as number, otherwise keep as string
+        value = isNaN(Number(valueInput)) ? valueInput : Number(valueInput);
+      }
+
+      customFilters.push({ key, op, value });
+
+      addMore = await Confirm.prompt({
+        message: "Add another custom attribute filter?",
+        default: false,
+      });
+    }
+
+    filters.custom = customFilters;
+  }
+
+  return filters;
+}
+
+/**
  * Handle multiple shots download workflow with fuzzy search
  */
 async function handleMultipleShotsDownload(
@@ -215,7 +574,7 @@ async function handleMultipleShotsDownload(
   mediaDownloadService: MediaDownloadService,
   queryService: QueryService,
 ): Promise<void> {
-  // Get search pattern from user
+  // Get search pattern from user first
   const searchPattern = await promptForShotSearchPattern();
   if (!searchPattern) return;
 
@@ -225,12 +584,29 @@ async function handleMultipleShotsDownload(
     searchPattern,
   );
 
+  // Ask if user wants to apply shot filters
+  const applyShotFilters = await Confirm.prompt({
+    message: "Would you like to apply filters to narrow down shot selection?",
+    default: false,
+  });
+
+  // Configure shot filters if requested
+  const shotFilters = applyShotFilters ? await configureShotFilters() : null;
+  
+  // Build filter where clause if shot filters are configured
+  let additionalFilters = "";
+  if (shotFilters) {
+    const filterService = new FilterService();
+    additionalFilters = filterService.buildWhere(shotFilters);
+    console.log(`📋 Applying shot filters: ${additionalFilters}`);
+  }
+
   // Fetch all shots and filter client-side for fuzzy matching
   console.log(`\n🔍 Searching for shots matching: "${searchPattern}"`);
 
   const allShots = await withErrorHandling(
     async () => {
-      const result = await queryService.queryShots();
+      const result = await queryService.queryShots(additionalFilters);
       await debugToFile(DEBUG_LOG_PATH, "All shots query result:", result);
       return result;
     },
@@ -242,7 +618,10 @@ async function handleMultipleShotsDownload(
   );
 
   if (!allShots?.data || allShots.data.length === 0) {
-    console.log("❌ No shots found in project");
+    const message = shotFilters 
+      ? "❌ No shots found matching the applied shot filters."
+      : "❌ No shots found in project";
+    console.log(message);
     return;
   }
 
@@ -278,25 +657,50 @@ async function handleMultipleShotsDownload(
     );
   }
 
+  // Ask if user wants to apply version filters
+  const applyVersionFilters = await Confirm.prompt({
+    message: "Would you like to apply filters to narrow down version selection?",
+    default: false,
+  });
+
+  // Configure version filters if requested
+  const versionFilters = applyVersionFilters ? await configureVersionFilters() : null;
+
   const shotsWithVersions: Array<{ shot: Shot; latestVersion: AssetVersion }> =
     [];
   for (const shot of matchingShots) {
     const typedShot = shot as Shot;
-    // Get latest asset version for each shot
-    const latestVersion = await getLatestAssetVersionForShot(
+    // Get filtered asset versions for each shot
+    const filteredVersions = await getFilteredAssetVersionsForShot(
       typedShot.id,
       queryService,
+      versionFilters,
     );
-    const versionInfo = latestVersion
-      ? `v${latestVersion.version}`
-      : "No versions";
-    console.log(`   - ${typedShot.name} (Latest version: ${versionInfo})`);
-
-    if (latestVersion) {
-      shotsWithVersions.push({
-        shot: typedShot,
-        latestVersion,
-      });
+    
+    if (filteredVersions.length > 0) {
+      // If version filters are applied, show "Found versions" even for single results
+      if (versionFilters) {
+        const versionList = filteredVersions.map(v => `v${v.version}`).join(", ");
+        console.log(`   - ${typedShot.name} (Found versions: ${versionList})`);
+        // Add all matching versions for this shot
+        for (const version of filteredVersions) {
+          shotsWithVersions.push({
+            shot: typedShot,
+            latestVersion: version,
+          });
+        }
+      } else {
+        // No version filters applied - show "Latest version"
+        const version = filteredVersions[0];
+        const versionInfo = `v${version.version}`;
+        console.log(`   - ${typedShot.name} (Latest version: ${versionInfo})`);
+        shotsWithVersions.push({
+          shot: typedShot,
+          latestVersion: version,
+        });
+      }
+    } else {
+      console.log(`   - ${typedShot.name} (No matching versions)`);
     }
   }
 
@@ -305,10 +709,15 @@ async function handleMultipleShotsDownload(
     return;
   }
 
-  // Confirm with user
+  // Count unique shots for better messaging
+  const uniqueShots = new Set(shotsWithVersions.map(item => item.shot.id)).size;
+  const totalVersions = shotsWithVersions.length;
+  
+  // Confirm with user using the requested format
+  const message = `Continue with downloading from these ${uniqueShots} shots - ${totalVersions} versions found?`;
+    
   const proceed = await Confirm.prompt({
-    message:
-      `Continue with downloading from these ${shotsWithVersions.length} shot(s)?`,
+    message,
     default: true,
   });
 
@@ -535,94 +944,116 @@ async function processShotsWithConcurrency(
 /**
  * Get latest asset version for a shot
  */
-async function getLatestAssetVersionForShot(
+
+async function getFilteredAssetVersionsForShot(
   shotId: string,
   queryService: QueryService,
-): Promise<AssetVersion | null> {
+  filters: {
+    status?: StatusFilter;
+    user?: UserFilter;
+    date?: DateFilter;
+    custom?: CustomAttrFilter[];
+  } | null,
+): Promise<AssetVersion[]> {
   try {
-    // First, try to find any asset versions for this shot (not just "Review" type)
-    const allVersionsResult = await queryService.queryAssetVersions(
-      `asset.parent.id is "${shotId}" order by version desc limit 10`,
-    );
+    // Build base query for asset versions in this shot
+    let whereClause = `asset.parent.id is "${shotId}"`;
+    
+    // Apply filters if provided
+    if (filters) {
+      const filterService = new FilterService();
+      const filterWhere = filterService.buildWhere(filters);
+      if (filterWhere) {
+        whereClause += ` and ${filterWhere}`;
+      }
+    }
+    
+    // Query asset versions with filters applied
+    const query = `${whereClause} order by version desc limit 50`;
+    const versionsResult = await queryService.queryAssetVersions(query);
 
     await debugToFile(
       DEBUG_LOG_PATH,
-      `All asset versions for shot ${shotId}:`,
-      allVersionsResult,
+      `Asset versions query for shot ${shotId}: ${query}`,
+      versionsResult,
     );
 
-    if (allVersionsResult?.data && allVersionsResult.data.length > 0) {
-      // Log what asset types we found
-      const assetTypes = allVersionsResult.data.map((av: unknown) => {
-        const typedAv = av as AssetVersion;
-        return typedAv.asset?.type?.name;
-      }).filter(Boolean);
-      await debugToFile(
-        DEBUG_LOG_PATH,
-        `Asset types found for shot ${shotId}:`,
-        assetTypes,
-      );
+    if (versionsResult?.data && versionsResult.data.length > 0) {
+      const versions = versionsResult.data as AssetVersion[];
+      
+      // If no filters applied, use the original logic to prefer certain asset types
+      if (!filters) {
+        // Log what asset types we found
+        const assetTypes = versions.map((av) => av.asset?.type?.name).filter(Boolean);
+        await debugToFile(
+          DEBUG_LOG_PATH,
+          `Asset types found for shot ${shotId}:`,
+          assetTypes,
+        );
 
-      // Try to find "Review" type first
-      const reviewVersion = allVersionsResult.data.find((av: unknown) => {
-        const typedAv = av as AssetVersion;
-        return typedAv.asset?.type?.name === "Review";
-      });
-      if (reviewVersion) {
-        return reviewVersion as AssetVersion;
-      }
-
-      // If no Review type, try common media types
-      const mediaTypes = ["Comp", "Render", "Movie", "Video", "Media"];
-      for (const mediaType of mediaTypes) {
-        const mediaVersion = allVersionsResult.data.find((av: unknown) => {
-          const typedAv = av as AssetVersion;
-          return typedAv.asset?.type?.name === mediaType;
-        });
-        if (mediaVersion) {
-          await debugToFile(
-            DEBUG_LOG_PATH,
-            `Using asset type "${mediaType}" for shot ${shotId}`,
-          );
-          return mediaVersion as AssetVersion;
+        // Try to find "Review" type first
+        const reviewVersion = versions.find((av) => av.asset?.type?.name === "Review");
+        if (reviewVersion) {
+          return [reviewVersion];
         }
-      }
 
-      // If no common media types, return the latest version of any type
+        // If no Review type, try common media types
+        const mediaTypes = ["Comp", "Render", "Movie", "Video", "Media"];
+        for (const mediaType of mediaTypes) {
+          const mediaVersion = versions.find((av) => av.asset?.type?.name === mediaType);
+          if (mediaVersion) {
+            await debugToFile(
+              DEBUG_LOG_PATH,
+              `Using asset type "${mediaType}" for shot ${shotId}`,
+            );
+            return [mediaVersion];
+          }
+        }
+
+        // If no common media types, return the latest version of any type
+        await debugToFile(
+          DEBUG_LOG_PATH,
+          `Using latest version of any type for shot ${shotId}:`,
+          versions[0],
+        );
+        return [versions[0]];
+      }
+      
+      // With filters applied, return all matching versions
       await debugToFile(
         DEBUG_LOG_PATH,
-        `Using latest version of any type for shot ${shotId}:`,
-        allVersionsResult.data[0],
+        `Found ${versions.length} filtered asset versions for shot ${shotId}`,
+        versions,
       );
-      return allVersionsResult.data[0] as AssetVersion;
+      return versions;
     }
 
-    return null;
+    return [];
   } catch (error) {
     await debugToFile(
       DEBUG_LOG_PATH,
-      `Error getting latest version for shot ${shotId}:`,
+      `Error getting filtered versions for shot ${shotId}:`,
       error,
     );
-    return null;
+    return [];
   }
 }
 
 /**
- * Prompt user for asset version ID
+ * Prompt user for version ID
  */
-async function promptForAssetVersionId(): Promise<string | null> {
-  const assetVersionId = await Input.prompt({
-    message: "Enter asset version ID:",
+async function promptForVersionId(): Promise<string | null> {
+  const versionId = await Input.prompt({
+    message: "Enter version ID:",
     validate: (input: string) => {
       if (!input.trim()) {
-        return "Asset version ID is required";
+        return "Version ID is required";
       }
       return true;
     },
   });
 
-  return assetVersionId.trim() || null;
+  return versionId.trim() || null;
 }
 
 /**

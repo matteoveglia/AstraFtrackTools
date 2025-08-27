@@ -94,7 +94,7 @@ export async function propagateThumbnails(
           ),
         {
           operation: "fetch versions with thumbnails",
-          entity: "AssetVersion",
+          entity: "Version",
           additionalData: {
             shotId: shot.id,
             shotName: shot.name,

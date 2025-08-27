@@ -235,7 +235,7 @@ export class AdvancedSelectionService {
     _options: SelectionOptions,
   ): Promise<SelectionResult> {
     const idsInput = await Input.prompt({
-      message: "Enter AssetVersion IDs (comma-separated):",
+      message: "Enter Version IDs (comma-separated):",
       validate: (input) => {
         if (!input.trim()) return "Please enter at least one ID";
         const ids = input.split(/[,\s]+/).filter(Boolean);
