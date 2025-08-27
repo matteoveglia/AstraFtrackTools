@@ -2,53 +2,66 @@
 
 _by [Astra Lumen Images Inc.](https://astralumen.co/)_
 
-A suite of tools to be used with Ftrack.
+A suite of command-line tools for Ftrack.
 
 ## Features
 
 ### 🗒️ | Inspect a Task
 
-This will output the schema and data for a given task
+Outputs the schema and data for a given task.
 
 ### 🎬 | Inspect a Shot
 
-This will output the schema and data for a given shot
+Outputs the schema and data for a given shot.
 
 ### ✨ | Inspect a Version
 
-This will output the schema and data for a given version
+Outputs the schema and data for a given version.
 
 ### 🖼️ | Propagate Thumbnails
 
-Updates shot thumbnails with thumbnails from their latest asset versions.
-Features A-Z sorting, progress tracking with ETA, and smart detection of
-existing thumbnails to avoid unnecessary updates.
+Updates shot thumbnails from their latest versions.
+Includes A–Z sorting, progress tracking with ETA, and smart detection of existing thumbnails to avoid unnecessary updates.
+
+### 📥 | Download Media
+
+Download media files from Ftrack versions, either individually by ID or in bulk from multiple shots, with filtering and search to suit your workflow.
+
+**Key Features:**
+- **Single Version Download**: Download media from a specific version by ID
+- **Multiple Shot Download**: Bulk download from shots using fuzzy search patterns
+- **Advanced Filtering**: Filter shots and versions by status, user, date, and custom attributes
+- **Media Preferences**: Choose between original files, encoded files, or both
+- **Progress Tracking**: Real‑time download progress with file size information
+- **Fallback Handling**: Automatic and manual fallback options for failed downloads
+- **Concurrent Downloads**: Efficient batch processing with configurable concurrency
+- **Smart Organisation**: Downloads organised by shot and version structure
 
 ### 🔄 | Update Latest Versions Sent
 
-This tool grabs the latest delivered version for each shot and updates the
+Finds the latest delivered version for each shot and updates the
 "latestVersionSent" and "latestVersionSentDate" custom attributes on the shot
 level.
 
 ### 🗑️ | Delete Media
 
-A comprehensive tool for managing asset version and component deletion in Ftrack.
+Manage version and component deletion in Ftrack.
 Supports multiple selection methods including direct ID input, shot name wildcards,
 list-based selection, and advanced pattern matching. Features dry-run previews,
-CSV export reports, and flexible component deletion strategies.
+CSV reports, and flexible component deletion strategies.
 
 **Key Features:**
 - **Multiple Selection Methods**: Direct IDs, shot name patterns, list selection, or advanced search
 - **Wildcard Support**: Use `*` for pattern matching in shot names (e.g., `SHOT_*` matches all shots starting with "SHOT_")
 - **Advanced Selection**: Pagination, filtering, fuzzy search, and interactive refinement
-- **Dry Run Mode**: Preview deletions before execution with detailed impact analysis
-- **CSV Reports**: Export deletion reports to Downloads directory for record keeping
+- **Dry Run Mode**: Preview deletions before they happen, with a detailed impact summary
+- **CSV Reports**: Export deletion reports to the Downloads folder for record‑keeping
 - **Component Strategies**: Choose to delete all components, original only, or encoded only
 - **Batch Operations**: Efficient handling of large deletion sets with progress tracking
 
 ### 🔐 | Secure
 
-During normal usage all API calls are made directly to Ftrack and all API keys
+During normal use, all API calls are made directly to Ftrack, and API keys
 are stored locally and encrypted uniquely to your machine.
 
 ## Custom Ftrack Attribute Requirements
@@ -65,7 +78,7 @@ Required custom attributes on the Shot:
 
 ### For Delete Media Tool
 
-No custom attributes required - works with standard Ftrack entities (AssetVersion, Component)
+No custom attributes required — works with standard Ftrack entities (AssetVersion, Component)
 
 ## Usage Examples
 
@@ -101,8 +114,8 @@ Enter shot name pattern: SEQ01_*_v* # Complex pattern matching
 - **Encoded Only**: Delete only encoded/processed components
 
 **Safety Features:**
-- Dry-run mode shows preview before deletion
-- CSV reports exported to Downloads folder
+- Dry-run mode shows a preview before deletion
+- CSV reports exported to the Downloads folder
 - Confirmation prompts for destructive operations
 
 ## Running from Binaries
@@ -125,32 +138,30 @@ open it.
 
 #### macOS
 
-Due to aggresive security restrictions on macOS, and me not wanting to pay for a
-developer license, I can't easily sign the binary to avoid a warning message. So
-you'll need to:
+Due to macOS security restrictions, the binary is unsigned. You may need to remove the quarantine flag before running it:
 
 1. Download the relevant file under
    [Releases](https://github.com/your-repo/AstraFtrackTools/releases/latest).
-2. Open Terminal
-3. Navigate to the downloads folder:
+2. Open Terminal.
+3. Navigate to the Downloads folder:
 
 ```bash
 cd ~/Downloads
 ```
 
-4. Remove quarantine flag:
+4. Remove the quarantine flag:
 
 ```bash
 xattr -d com.apple.quarantine astraftracktools-macos
 ```
 
-5. Make executable:
+5. Make it executable:
 
 ```bash
 chmod +x astraftracktools-macos
 ```
 
-6. Run:
+6. Run it:
 
 ```bash
 ./astraftracktools-macos
@@ -162,24 +173,24 @@ On first run, the app will ask you for your Ftrack credentials and automatically
 test them:
 
 - **Ftrack Server URL** (e.g. https://yourcompany.ftrackapp.com)
-- **Ftrack API User** (e.g. your ftrack associated email)
+- **Ftrack API User** (e.g. your Ftrack‑associated email)
 - **Ftrack API Key** (secure password input)
 
-### Getting Your API Key:
+### Getting your API key
 
-1. Log into your Ftrack instance
+1. Log in to your Ftrack instance
 2. Go to **My Account** (top right)
 3. Navigate to **Security Settings**
 4. Under **Personal API Key**, click **Generate New Key**
-   - ⚠️ This key will only appear once and can be revoked/regenerated anytime
+   - ⚠️ This key will only appear once and can be revoked/regenerated at any time
 
 The tool will automatically test your credentials and securely store them
-locally. You can update credentials anytime using the "Set Ftrack Credentials"
+locally. You can update your credentials at any time using the "Set Ftrack Credentials"
 option in the main menu.
 
 # Development
 
-## Technology Stack
+## Technology stack
 
 - TypeScript
 - Deno 2
@@ -244,6 +255,6 @@ deno task test
 
 We welcome contributions and suggestions!
 
-## License
+## Licence
 
 This project is licensed under the terms of the [LICENSE](./LICENSE) file.
