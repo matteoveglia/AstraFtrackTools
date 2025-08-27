@@ -1,6 +1,4 @@
-import { Confirm, Input, Select } from "@cliffy/prompt";
-// Removed: import process from "node:process";
-
+import { Checkbox, Confirm, Input, Select } from "@cliffy/prompt";
 import { debugToFile } from "../utils/debug.ts";
 import { loadPreferences } from "../utils/preferences.ts";
 import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
@@ -11,6 +9,13 @@ import { ComponentService } from "../services/componentService.ts";
 import { MediaDownloadService } from "../services/mediaDownloadService.ts";
 import { ProjectContextService } from "../services/projectContext.ts";
 import { QueryService } from "../services/queries.ts";
+import { FilterService } from "../services/filterService.ts";
+import type {
+  StatusFilter,
+  UserFilter,
+  DateFilter,
+  CustomAttrFilter,
+} from "../services/filterService.ts";
 
 import type { Session } from "@ftrack/api";
 import type {
@@ -208,6 +213,188 @@ async function handleSingleAssetVersionDownload(
 }
 
 /**
+ * Configure optional filters for shot selection
+ */
+async function configureFilters(): Promise<{
+  status?: StatusFilter;
+  user?: UserFilter;
+  date?: DateFilter;
+  custom?: CustomAttrFilter[];
+} | null> {
+  // Ask user if they want to apply filters
+  const useFilters = await Confirm.prompt({
+    message: "Would you like to apply filters to narrow down shot selection?",
+    default: false,
+  });
+
+  if (!useFilters) {
+    return null;
+  }
+
+  // Let user select which filter types to configure
+  const filterTypes = await Checkbox.prompt({
+    message: "Select filter types to configure:",
+    options: [
+      { name: "Status", value: "status" },
+      { name: "User", value: "user" },
+      { name: "Date", value: "date" },
+      { name: "Custom Attributes", value: "custom" },
+    ],
+    minOptions: 1,
+  });
+
+  const filters: {
+    status?: StatusFilter;
+    user?: UserFilter;
+    date?: DateFilter;
+    custom?: CustomAttrFilter[];
+  } = {};
+
+  // Configure status filter
+  if (filterTypes.includes("status")) {
+    const statusNames = await Input.prompt({
+      message: "Enter status names (comma-separated, e.g., 'In Progress,Review'):",
+      validate: (input: string) => {
+        if (!input.trim()) {
+          return "At least one status name is required";
+        }
+        return true;
+      },
+    });
+    filters.status = {
+      names: statusNames.split(",").map((name) => name.trim()),
+    };
+  }
+
+  // Configure user filter
+  if (filterTypes.includes("user")) {
+    const usernames = await Input.prompt({
+      message: "Enter usernames (comma-separated, e.g., 'john.doe,jane.smith'):",
+      validate: (input: string) => {
+        if (!input.trim()) {
+          return "At least one username is required";
+        }
+        return true;
+      },
+    });
+    filters.user = {
+      usernames: usernames.split(",").map((name) => name.trim()),
+    };
+  }
+
+  // Configure date filter
+  if (filterTypes.includes("date")) {
+    const dateKind = await Select.prompt({
+      message: "Select date filter type:",
+      options: [
+        { name: "Older than", value: "older" },
+        { name: "Newer than", value: "newer" },
+        { name: "Between dates", value: "between" },
+      ],
+    }) as "older" | "newer" | "between";
+
+    if (dateKind === "older") {
+      const to = await Input.prompt({
+        message: "Enter date (YYYY-MM-DD):",
+        validate: (input: string) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+            return "Please enter date in YYYY-MM-DD format";
+          }
+          return true;
+        },
+      });
+      filters.date = { kind: "older", to };
+    } else if (dateKind === "newer") {
+      const from = await Input.prompt({
+        message: "Enter date (YYYY-MM-DD):",
+        validate: (input: string) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+            return "Please enter date in YYYY-MM-DD format";
+          }
+          return true;
+        },
+      });
+      filters.date = { kind: "newer", from };
+    } else {
+      const from = await Input.prompt({
+        message: "Enter start date (YYYY-MM-DD):",
+        validate: (input: string) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+            return "Please enter date in YYYY-MM-DD format";
+          }
+          return true;
+        },
+      });
+      const to = await Input.prompt({
+        message: "Enter end date (YYYY-MM-DD):",
+        validate: (input: string) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+            return "Please enter date in YYYY-MM-DD format";
+          }
+          return true;
+        },
+      });
+      filters.date = { kind: "between", from, to };
+    }
+  }
+
+  // Configure custom attribute filters
+  if (filterTypes.includes("custom")) {
+    const customFilters: CustomAttrFilter[] = [];
+    let addMore = true;
+
+    while (addMore) {
+      const key = await Input.prompt({
+        message: "Enter custom attribute key:",
+        validate: (input: string) => {
+          if (!input.trim()) {
+            return "Attribute key is required";
+          }
+          return true;
+        },
+      });
+
+      const op = await Select.prompt({
+        message: "Select operator:",
+        options: [
+          { name: "Equals", value: "eq" },
+          { name: "Not equals", value: "neq" },
+          { name: "Contains", value: "contains" },
+          { name: "Is true", value: "true" },
+          { name: "Is false", value: "false" },
+        ],
+      }) as "eq" | "neq" | "contains" | "true" | "false";
+
+      let value: string | number | boolean | undefined;
+      if (op !== "true" && op !== "false") {
+        const valueInput = await Input.prompt({
+          message: "Enter value:",
+          validate: (input: string) => {
+            if (!input.trim()) {
+              return "Value is required";
+            }
+            return true;
+          },
+        });
+        // Try to parse as number, otherwise keep as string
+        value = isNaN(Number(valueInput)) ? valueInput : Number(valueInput);
+      }
+
+      customFilters.push({ key, op, value });
+
+      addMore = await Confirm.prompt({
+        message: "Add another custom attribute filter?",
+        default: false,
+      });
+    }
+
+    filters.custom = customFilters;
+  }
+
+  return filters;
+}
+
+/**
  * Handle multiple shots download workflow with fuzzy search
  */
 async function handleMultipleShotsDownload(
@@ -215,6 +402,9 @@ async function handleMultipleShotsDownload(
   mediaDownloadService: MediaDownloadService,
   queryService: QueryService,
 ): Promise<void> {
+  // Configure optional filters
+  const filters = await configureFilters();
+  
   // Get search pattern from user
   const searchPattern = await promptForShotSearchPattern();
   if (!searchPattern) return;
@@ -225,12 +415,20 @@ async function handleMultipleShotsDownload(
     searchPattern,
   );
 
+  // Build filter where clause if filters are configured
+  let additionalFilters = "";
+  if (filters) {
+    const filterService = new FilterService();
+    additionalFilters = filterService.buildWhere(filters);
+    console.log(`📋 Applying filters: ${additionalFilters}`);
+  }
+
   // Fetch all shots and filter client-side for fuzzy matching
   console.log(`\n🔍 Searching for shots matching: "${searchPattern}"`);
 
   const allShots = await withErrorHandling(
     async () => {
-      const result = await queryService.queryShots();
+      const result = await queryService.queryShots(additionalFilters);
       await debugToFile(DEBUG_LOG_PATH, "All shots query result:", result);
       return result;
     },
@@ -242,7 +440,10 @@ async function handleMultipleShotsDownload(
   );
 
   if (!allShots?.data || allShots.data.length === 0) {
-    console.log("❌ No shots found in project");
+    const message = filters 
+      ? "❌ No shots found matching the applied filters."
+      : "❌ No shots found in project";
+    console.log(message);
     return;
   }
 
