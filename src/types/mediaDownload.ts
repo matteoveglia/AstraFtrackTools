@@ -26,6 +26,10 @@ export interface AssetVersion {
   version: number;
   asset: Asset;
   components: Component[];
+  status?: { id: string; name: string };
+  user?: { id: string; username: string };
+  date?: string;
+  custom_attributes?: Record<string, unknown>;
 }
 
 export interface Asset {

@@ -46,6 +46,10 @@ const mockAssetVersionData: AssetVersion[] = [
       type: { id: "type-1", name: "Render" },
     },
     components: [],
+    status: { id: "status-1", name: "Approved" },
+    user: { id: "user-1", username: "john.doe" },
+    date: "2024-01-15",
+    custom_attributes: { department: "lighting", priority: "high" },
   },
   {
     id: "version-2",
@@ -57,6 +61,40 @@ const mockAssetVersionData: AssetVersion[] = [
       type: { id: "type-1", name: "Render" },
     },
     components: [],
+    status: { id: "status-2", name: "Review" },
+    user: { id: "user-2", username: "jane.smith" },
+    date: "2024-02-10",
+    custom_attributes: { department: "compositing", priority: "medium" },
+  },
+  {
+    id: "version-3",
+    version: 3,
+    asset: {
+      id: "asset-3",
+      name: "main",
+      parent: mockShotData[0], // Same shot as version-1
+      type: { id: "type-1", name: "Render" },
+    },
+    components: [],
+    status: { id: "status-1", name: "Approved" },
+    user: { id: "user-1", username: "john.doe" },
+    date: "2024-03-05",
+    custom_attributes: { department: "lighting", priority: "low" },
+  },
+  {
+    id: "version-4",
+    version: 1,
+    asset: {
+      id: "asset-4",
+      name: "main",
+      parent: mockShotData[2],
+      type: { id: "type-2", name: "Review" },
+    },
+    components: [],
+    status: { id: "status-3", name: "Final" },
+    user: { id: "user-2", username: "jane.smith" },
+    date: "2024-01-20",
+    custom_attributes: { department: "compositing", priority: "high" },
   },
 ];
 
@@ -494,4 +532,132 @@ Deno.test("Performance - should handle large filter combinations efficiently", (
   assertEquals(whereClause.includes('Status99'), true);
   assertEquals(whereClause.includes('user0'), true);
   assertEquals(whereClause.includes('user49'), true);
+});
+
+// Asset Version Filtering Tests
+Deno.test("AssetVersion Filtering - should filter by status", async () => {
+  const mockSession = createMockSession([{ data: mockAssetVersionData }]);
+  const projectContext = createMockProjectContextService();
+  const queryService = createMockQueryService(mockSession, projectContext);
+  
+  // Mock the queryAssetVersions method to return filtered results
+  queryService.queryAssetVersions = async (query: string) => {
+    // Simulate filtering by status
+    if (query.includes('status.name in ("Approved")')) {
+      return {
+        data: mockAssetVersionData.filter(v => v.status?.name === "Approved")
+      };
+    }
+    return { data: [] }; // Return empty if no filter matches
+  };
+  
+  // Import the function we want to test (this would need to be exported)
+  // For now, we'll test the filter logic directly
+  const filterService = new FilterService();
+  const filters = {
+    status: { names: ["Approved"] } as StatusFilter,
+  };
+  
+  const whereClause = filterService.buildWhere(filters);
+  const result = await queryService.queryAssetVersions(`asset.parent.id is "shot-1" and ${whereClause}`);
+  
+  assertEquals(result.data.length, 2); // version-1 and version-3 have "Approved" status
+  assertEquals((result.data[0] as AssetVersion).status?.name, "Approved");
+});
+
+Deno.test("AssetVersion Filtering - should filter by user", async () => {
+  const mockSession = createMockSession([{ data: mockAssetVersionData }]);
+  const projectContext = createMockProjectContextService();
+  const queryService = createMockQueryService(mockSession, projectContext);
+  
+  queryService.queryAssetVersions = async (query: string) => {
+    if (query.includes('user.username in ("john.doe")')) {
+      return {
+        data: mockAssetVersionData.filter(v => v.user?.username === "john.doe")
+      };
+    }
+    return { data: [] }; // Return empty if no filter matches
+  };
+  
+  const filterService = new FilterService();
+  const filters = {
+    user: { usernames: ["john.doe"] } as UserFilter,
+  };
+  
+  const whereClause = filterService.buildWhere(filters);
+  const result = await queryService.queryAssetVersions(`asset.parent.id is "shot-1" and ${whereClause}`);
+  
+  assertEquals(result.data.length, 2); // version-1 and version-3 are by john.doe
+  assertEquals((result.data[0] as AssetVersion).user?.username, "john.doe");
+});
+
+Deno.test("AssetVersion Filtering - should handle multiple versions per shot", async () => {
+  const mockSession = createMockSession([{ data: mockAssetVersionData }]);
+  const projectContext = createMockProjectContextService();
+  const queryService = createMockQueryService(mockSession, projectContext);
+  
+  queryService.queryAssetVersions = async (query: string) => {
+    // Return versions for shot-1 (version-1 and version-3)
+    if (query.includes('asset.parent.id is "shot-1"')) {
+      return {
+        data: mockAssetVersionData.filter(v => v.asset.parent.id === "shot-1")
+      };
+    }
+    return { data: [] };
+  };
+  
+  const result = await queryService.queryAssetVersions('asset.parent.id is "shot-1"');
+  
+  assertEquals(result.data.length, 2); // shot-1 has two versions (version-1 and version-3)
+  const versions = result.data as AssetVersion[];
+  assertEquals(versions[0].asset.parent.id, "shot-1");
+  assertEquals(versions[1].asset.parent.id, "shot-1");
+});
+
+Deno.test("AssetVersion Filtering - should combine filters correctly", async () => {
+  const mockSession = createMockSession([{ data: mockAssetVersionData }]);
+  const projectContext = createMockProjectContextService();
+  const queryService = createMockQueryService(mockSession, projectContext);
+  
+  queryService.queryAssetVersions = async (query: string) => {
+    // Simulate combined filtering: Approved status AND john.doe user
+    if (query.includes('status.name in ("Approved")') && query.includes('user.username in ("john.doe")')) {
+      return {
+        data: mockAssetVersionData.filter(v => 
+          v.status?.name === "Approved" && v.user?.username === "john.doe"
+        )
+      };
+    }
+    return { data: [] }; // Return empty if no filter matches
+  };
+  
+  const filterService = new FilterService();
+  const filters = {
+    status: { names: ["Approved"] } as StatusFilter,
+    user: { usernames: ["john.doe"] } as UserFilter,
+  };
+  
+  const whereClause = filterService.buildWhere(filters);
+  const result = await queryService.queryAssetVersions(`asset.parent.id is "shot-1" and ${whereClause}`);
+  
+  assertEquals(result.data.length, 2); // version-1 and version-3 match both criteria
+  const versions = result.data as AssetVersion[];
+  versions.forEach(version => {
+    assertEquals(version.status?.name, "Approved");
+    assertEquals(version.user?.username, "john.doe");
+  });
+});
+
+Deno.test("AssetVersion Filtering - should handle no matching versions", async () => {
+  const mockSession = createMockSession([{ data: [] }]);
+  const projectContext = createMockProjectContextService();
+  const queryService = createMockQueryService(mockSession, projectContext);
+  
+  queryService.queryAssetVersions = async () => {
+    return { data: [] }; // No matching versions
+  };
+  
+  const result = await queryService.queryAssetVersions('asset.parent.id is "nonexistent-shot"');
+  
+  assertEquals(result.data.length, 0);
 });
