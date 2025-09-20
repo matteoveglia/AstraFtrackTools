@@ -36,7 +36,7 @@ output
 coverage/
 
 # IDE
-.tr*
+.wi*
 .vscode/*
 !.vscode/settings.json
 .idea/
