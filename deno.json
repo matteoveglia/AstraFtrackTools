@@ -4,7 +4,7 @@
     "@deno-library/progress": "jsr:@deno-library/progress@^1.5.1",
     "@ftrack/api": "npm:@ftrack/api@^1.11.2",
     "csv-writer": "npm:csv-writer@^1.6.0",
-    "dotenv": "npm:dotenv@^17.2.1",
+    "dotenv": "npm:dotenv@^17.2.2",
     "@cliffy/prompt": "jsr:@cliffy/prompt@^1.0.0-rc.8",
     "js-yaml": "npm:js-yaml@^4.1.0",
     "moment": "npm:moment@^2.30.1",
