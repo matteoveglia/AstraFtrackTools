@@ -22,12 +22,11 @@ Added to `deno.json`:
 {
   "ink": "npm:ink@^5.1.0",
   "react": "npm:react@^18.3.1",
-  "ink-text-input": "npm:ink-text-input@^6.0.0",
-  "ink-select-input": "npm:ink-select-input@^6.0.0",
-  "ink-spinner": "npm:ink-spinner@^5.0.0",
-  "ink-box": "npm:ink-box@^4.0.0"
+  "ink-text-input": "npm:ink-text-input@^6.0.0"
 }
 ```
+
+**Note:** We initially considered additional Ink packages but decided to build custom components instead, keeping dependencies minimal and tailored to our needs.
 
 ### 2. New Component Architecture
 
@@ -39,6 +38,7 @@ src/components/
 ├── CredentialsSetup.tsx       # Ftrack credentials setup wizard
 ├── ProjectSelector.tsx        # Project selection interface
 ├── MainMenu.tsx               # Main menu navigation
+├── Settings.tsx               # Settings and credential management
 ├── ToolRunner.tsx             # Tool execution wrapper
 └── common/
     └── SelectInput.tsx        # Custom select input component
@@ -72,6 +72,14 @@ src/components/
   - Utilities
 - Shows current project context
 - Handles tool selection and submenu navigation
+
+#### **Settings.tsx**
+- Comprehensive settings and credential management
+- View current Ftrack server, user, and API key (masked)
+- Edit credentials with multi-step wizard
+- Validate credentials before saving
+- Session restart functionality to apply new credentials
+- Accessible from both project selection and main menu
 
 #### **ToolRunner.tsx**
 - Wrapper for executing individual tools
