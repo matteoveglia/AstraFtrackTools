@@ -28,13 +28,13 @@ jobs:
         run: echo "version=$(deno eval 'console.log(JSON.parse(Deno.readTextFileSync("./package.json")).version)')" >> $GITHUB_OUTPUT
 
       - name: Build for Linux
-        run: deno compile --no-check --allow-env --allow-read --allow-write --allow-net --allow-sys --target x86_64-unknown-linux-gnu --output dist/astraftracktools-linux src/index.ts
+        run: deno compile --no-check --allow-run --allow-env --allow-read --allow-write --allow-net --allow-sys --target x86_64-unknown-linux-gnu --output dist/astraftracktools-linux src/index.tsx
 
       - name: Build for Windows
-        run: deno compile --no-check --allow-env --allow-read --allow-write --allow-net --allow-sys --target x86_64-pc-windows-msvc --output dist/astraftracktools-windows.exe src/index.ts
+        run: deno compile --no-check --allow-run --allow-env --allow-read --allow-write --allow-net --allow-sys --target x86_64-pc-windows-msvc --output dist/astraftracktools-windows.exe src/index.tsx
 
       - name: Build for macOS
-        run: deno compile --no-check --allow-env --allow-read --allow-write --allow-net --allow-sys --target x86_64-apple-darwin --output dist/astraftracktools-macos src/index.ts
+        run: deno compile --no-check --allow-run --allow-env --allow-read --allow-write --allow-net --allow-sys --target x86_64-apple-darwin --output dist/astraftracktools-macos src/index.tsx
 
       - name: Create tag
         run: git tag v${{ steps.package_version.outputs.version }}
