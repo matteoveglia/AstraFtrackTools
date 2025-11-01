@@ -12,11 +12,7 @@
     "crypto": "jsr:@std/crypto@1.0.5/crypto",
     "@std/assert": "jsr:@std/assert@^1.0.14",
     "ink": "npm:ink@^5.1.0",
-    "react": "npm:react@^18.3.1",
-    "ink-text-input": "npm:ink-text-input@^6.0.0",
-    "ink-select-input": "npm:ink-select-input@^6.0.0",
-    "ink-spinner": "npm:ink-spinner@^5.0.0",
-    "ink-box": "npm:ink-box@^4.0.0"
+    "react": "npm:react@^18.3.1"
   },
   "tasks": {
     "build": "deno task build-linux && deno task build-windows && deno task build-macos",
