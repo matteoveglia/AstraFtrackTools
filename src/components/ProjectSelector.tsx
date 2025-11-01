@@ -32,10 +32,14 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   const loadProjects = async () => {
     try {
       setLoading(true);
-      const results = await session.query(
+      const response = await session.query(
         'select id, name, full_name from Project where status is "active"'
       );
-      setProjects(results as Project[]);
+
+      // Ftrack API returns data in a .data property
+      const projectsArray = (response as { data: Project[] }).data || [];
+
+      setProjects(projectsArray);
       setLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -45,16 +49,15 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
 
   const handleSelection = (value: string) => {
     if (value === "all-projects") {
-      onProjectSelected({ mode: "all-projects" });
+      onProjectSelected({ project: null, isGlobal: true });
     } else if (value === "exit") {
       onExit();
     } else {
       const project = projects.find((p) => p.id === value);
       if (project) {
         onProjectSelected({
-          mode: "project",
-          projectId: project.id,
-          projectName: project.full_name,
+          project: project,
+          isGlobal: false,
         });
       }
     }
@@ -82,12 +85,17 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
     );
   }
 
+  // Ensure projects is always an array before mapping
+  const projectItems = Array.isArray(projects)
+    ? projects.map((project) => ({
+        label: `  ${project.full_name}`,
+        value: project.id,
+      }))
+    : [];
+
   const items = [
     { label: "── Project Scope ──", value: "separator-1", disabled: true },
-    ...projects.map((project) => ({
-      label: `  ${project.full_name}`,
-      value: project.id,
-    })),
+    ...projectItems,
     { label: "", value: "separator-2", disabled: true },
     { label: "── Special Modes ──", value: "separator-3", disabled: true },
     {
