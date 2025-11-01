@@ -2,11 +2,13 @@ import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import { Session } from "@ftrack/api";
 import { SelectInput } from "./common/SelectInput.tsx";
+import { Settings } from "./Settings.tsx";
 import { type ProjectContext } from "../utils/projectSelection.ts";
 
 interface ProjectSelectorProps {
   session: Session;
   onProjectSelected: (context: ProjectContext) => void;
+  onCredentialsUpdated?: (server: string, user: string, key: string) => void;
   onExit: () => void;
 }
 
@@ -19,11 +21,13 @@ interface Project {
 export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   session,
   onProjectSelected,
+  onCredentialsUpdated,
   onExit,
 }) => {
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     loadProjects();
@@ -50,6 +54,8 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   const handleSelection = (value: string) => {
     if (value === "all-projects") {
       onProjectSelected({ project: null, isGlobal: true });
+    } else if (value === "settings") {
+      setShowSettings(true);
     } else if (value === "exit") {
       onExit();
     } else {
@@ -61,6 +67,10 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
         });
       }
     }
+  };
+
+  const handleSettingsBack = () => {
+    setShowSettings(false);
   };
 
   if (loading) {
@@ -103,8 +113,20 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
       value: "all-projects",
     },
     { label: "", value: "separator-4", disabled: true },
+    { label: "── Options ──", value: "separator-5", disabled: true },
+    { label: "⚙️  Settings", value: "settings" },
     { label: "Exit", value: "exit" },
   ];
+
+  // If settings is active, show settings
+  if (showSettings) {
+    return (
+      <Settings
+        onBack={handleSettingsBack}
+        onCredentialsUpdated={onCredentialsUpdated}
+      />
+    );
+  }
 
   return (
     <Box flexDirection="column" padding={1}>

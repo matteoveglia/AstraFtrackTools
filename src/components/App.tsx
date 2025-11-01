@@ -164,6 +164,7 @@ export const App: React.FC<AppProps> = ({ onExit }) => {
       <ProjectSelector
         session={session}
         onProjectSelected={handleProjectSelected}
+        onCredentialsUpdated={handleCredentialsUpdated}
         onExit={handleExit}
       />
     );
