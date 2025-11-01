@@ -20,7 +20,7 @@
     "npm:@ftrack/api@^1.11.2": "1.11.2",
     "npm:@types/node@*": "22.15.15",
     "npm:csv-writer@^1.6.0": "1.6.0",
-    "npm:dotenv@^17.2.3": "17.2.3",
+    "npm:dotenv@^17.2.2": "17.2.2",
     "npm:js-yaml@^4.1.0": "4.1.0",
     "npm:moment@^2.30.1": "2.30.1"
   },
@@ -113,8 +113,8 @@
     "csv-writer@1.6.0": {
       "integrity": "sha512-NOx7YDFWEsM/fTRAJjRpPp8t+MKRVvniAg9wQlUKx20MFrPs73WLJhFf5iteqrxNYnsy924K3Iroh3yNHeYd2g=="
     },
-    "dotenv@17.2.3": {
-      "integrity": "sha512-JVUnt+DUIzu87TABbhPmNfVdBDt18BLOWjMUFJMSi/Qqg7NTYtabbvSNJGOJ7afbRuv9D/lngizHtP7QyLQ+9w=="
+    "dotenv@17.2.2": {
+      "integrity": "sha512-Sf2LSQP+bOlhKWWyhFsn0UsfdK/kCWRv1iuA2gXAwt3dyNabr6QSj00I2V10pidqz69soatm9ZwZvpQMTIOd5Q=="
     },
     "isomorphic-ws@5.0.0_ws@8.18.0": {
       "integrity": "sha512-muId7Zzn9ywDsyXgTIafTry2sV3nySZeUDe6YedVd1Hvuuep5AsIlqK+XefWpYTyJG5e503F2xIuT2lcU6rCSw==",
@@ -333,7 +333,7 @@
       "jsr:@std/crypto@1.0.5",
       "npm:@ftrack/api@^1.11.2",
       "npm:csv-writer@^1.6.0",
-      "npm:dotenv@^17.2.3",
+      "npm:dotenv@^17.2.2",
       "npm:js-yaml@^4.1.0",
       "npm:moment@^2.30.1"
     ]
