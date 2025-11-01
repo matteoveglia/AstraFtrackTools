@@ -2,7 +2,7 @@
 
 _by [Astra Lumen Images Inc.](https://astralumen.co/)_
 
-A suite of command-line tools for Ftrack.
+An interactive command-line suite of tools for Ftrack, built with TypeScript and Ink.
 
 ## Features
 
@@ -190,12 +190,75 @@ option in the main menu.
 
 # Development
 
-## Technology stack
+## Technology Stack
 
-- TypeScript
-- Deno 2
-- Ftrack API
-- Inquirer
+- **TypeScript** - For type-safe development
+- **Deno** - Secure runtime for JavaScript and TypeScript
+- **Ink** - React for CLIs, powering the new TUI
+- **Ftrack API** - For interacting with Ftrack services
+- **React** - Component-based UI architecture
+
+## Development Setup
+
+### Prerequisites
+- [Deno](https://deno.land/) 1.37.0 or later
+- Node.js (for development dependencies)
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/matteoveglia/AstraFtrackTools.git
+   cd AstraFtrackTools
+   ```
+
+2. Install dependencies:
+   ```bash
+   deno cache --reload --lock=deno.lock src/index.tsx
+   ```
+
+3. Run in development mode:
+   ```bash
+   deno task dev
+   ```
+
+### Building for Production
+
+Build standalone executables for all platforms:
+```bash
+deno task build
+```
+
+### Project Structure
+
+```
+src/
+├── components/      # React components for the TUI
+│   ├── App.tsx     # Main application component
+│   ├── CredentialsSetup.tsx  # Ftrack credentials wizard
+│   ├── ProjectSelector.tsx   # Project selection interface
+│   ├── MainMenu.tsx          # Main navigation menu
+│   ├── Settings.tsx          # Settings and credential management
+│   ├── ToolRunner.tsx        # Tool execution wrapper
+│   └── common/               # Shared components
+│       └── SelectInput.tsx   # Custom select input component
+├── services/       # Business logic and Ftrack API clients
+└── tests/          # Test files
+```
+
+### Contributing
+
+1. Create a new branch for your feature/fix
+2. Make your changes following the component architecture
+3. Test your changes thoroughly
+4. Submit a pull request
+
+### Testing
+
+Run the test suite:
+```bash
+deno test --allow-net --allow-read --allow-write --allow-env
+```
 
 ## Installation
 
