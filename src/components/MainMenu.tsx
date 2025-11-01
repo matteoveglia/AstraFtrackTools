@@ -10,6 +10,7 @@ import {
   type ProjectContext,
 } from "../utils/projectSelection.ts";
 import { ToolRunner } from "./ToolRunner.tsx";
+import { Settings } from "./Settings.tsx";
 
 interface MainMenuProps {
   session: Session;
@@ -18,6 +19,7 @@ interface MainMenuProps {
   projectContextService: ProjectContextService;
   queryService: QueryService;
   onChangeProject: () => void;
+  onCredentialsUpdated?: (server: string, user: string, key: string) => void;
   onExit: () => void;
 }
 
@@ -35,10 +37,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   projectContextService,
   queryService,
   onChangeProject,
+  onCredentialsUpdated,
   onExit,
 }) => {
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [subMenuContext, setSubMenuContext] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   const projectTools: MenuItem[] = [
     {
@@ -97,6 +101,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     },
     ...globalTools,
     { label: "─── Utilities ───", value: "sep-utils", disabled: true },
+    { label: "⚙️  Settings", value: "settings" },
     { label: "Change Project", value: "change-project" },
     { label: "Exit", value: "exit" },
   ];
@@ -114,11 +119,17 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       onExit();
     } else if (value === "change-project") {
       onChangeProject();
+    } else if (value === "settings") {
+      setShowSettings(true);
     } else if (value === "exportSchema") {
       setSubMenuContext("exportSchema");
     } else {
       setActiveTool(value);
     }
+  };
+
+  const handleSettingsBack = () => {
+    setShowSettings(false);
   };
 
   const handleSubMenuSelection = (value: string) => {
@@ -133,6 +144,16 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   const handleToolComplete = () => {
     setActiveTool(null);
   };
+
+  // If settings is active, show settings
+  if (showSettings) {
+    return (
+      <Settings
+        onBack={handleSettingsBack}
+        onCredentialsUpdated={onCredentialsUpdated}
+      />
+    );
+  }
 
   // If a tool is active, show the tool runner
   if (activeTool) {

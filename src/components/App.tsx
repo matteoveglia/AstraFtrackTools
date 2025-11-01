@@ -113,6 +113,15 @@ export const App: React.FC<AppProps> = ({ onExit }) => {
     setState("project-selection");
   };
 
+  const handleCredentialsUpdated = async (
+    server: string,
+    user: string,
+    key: string
+  ) => {
+    // Restart the entire session with new credentials
+    await initializeSession(server, user, key);
+  };
+
   const handleExit = () => {
     if (onExit) {
       onExit();
@@ -176,6 +185,7 @@ export const App: React.FC<AppProps> = ({ onExit }) => {
         projectContextService={projectContextService}
         queryService={queryService}
         onChangeProject={handleChangeProject}
+        onCredentialsUpdated={handleCredentialsUpdated}
         onExit={handleExit}
       />
     );
