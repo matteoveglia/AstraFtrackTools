@@ -1,7 +1,7 @@
 {
-  "name": "astraftracktools",
-  "version": "1.0.1",
-  "private": true,
-  "description": "Tools for interacting with Ftrack",
-  "author": "Matteo Veglia"
+	"name": "astraftracktools",
+	"version": "1.0.2",
+	"private": true,
+	"description": "Tools for interacting with Ftrack",
+	"author": "Matteo Veglia"
 }

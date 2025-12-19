@@ -5,221 +5,222 @@ import yaml from "js-yaml";
 import { fileURLToPath } from "node:url";
 import type { Session } from "@ftrack/api";
 import { exportSchema } from "../tools/exportSchema.ts";
-import { ProjectContextService } from "../services/projectContext.ts";
+import type { ProjectContextService } from "../services/projectContext.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outputDir = path.join(__dirname, "../../output");
 
 // Mock ProjectContextService
 const mockProjectContextService = {
-  getContext: () => ({
-    isGlobal: true,
-    project: null,
-  }),
+	getContext: () => ({
+		isGlobal: true,
+		project: null,
+	}),
 } as unknown as ProjectContextService;
 
 // Mock session with proper query responses
 const mockSession = {
-  apiUser: "test",
-  apiKey: "test",
-  serverUrl: "test",
-  apiEndpoint: "test",
-  query: (expression: string) => {
-    if (expression.includes("ObjectType")) {
-      return Promise.resolve({
-        data: [
-          { id: "shot-id", name: "Shot" },
-          { id: "task-id", name: "Task" },
-          { id: "project-id", name: "Project" },
-        ],
-      });
-    } else if (expression.includes("CustomAttributeConfiguration")) {
-      return Promise.resolve({
-        data: [
-          {
-            id: "attr-1",
-            key: "test_attribute",
-            label: "Test Attribute",
-            type: "text",
-            config: { type: "text" },
-            entity_type: "Shot",
-          },
-        ],
-      });
-    }
-    return Promise.resolve({ data: [] });
-  },
+	apiUser: "test",
+	apiKey: "test",
+	serverUrl: "test",
+	apiEndpoint: "test",
+	query: (expression: string) => {
+		if (expression.includes("ObjectType")) {
+			return Promise.resolve({
+				data: [
+					{ id: "shot-id", name: "Shot" },
+					{ id: "task-id", name: "Task" },
+					{ id: "project-id", name: "Project" },
+				],
+			});
+		} else if (expression.includes("CustomAttributeConfiguration")) {
+			return Promise.resolve({
+				data: [
+					{
+						id: "attr-1",
+						key: "test_attribute",
+						label: "Test Attribute",
+						type: "text",
+						config: { type: "text" },
+						entity_type: "Shot",
+					},
+				],
+			});
+		}
+		return Promise.resolve({ data: [] });
+	},
 } as unknown as Session;
 
 async function setupTest() {
-  await fs.mkdir(outputDir, { recursive: true });
+	await fs.mkdir(outputDir, { recursive: true });
 }
 
 async function cleanupTest() {
-  try {
-    const files = await fs.readdir(outputDir);
-    await Promise.all(
-      files.map((file) => fs.unlink(path.join(outputDir, file))),
-    );
-    await fs.rmdir(outputDir);
-  } catch (error) {
-    console.warn("Cleanup failed:", error);
-  }
+	try {
+		const files = await fs.readdir(outputDir);
+		await Promise.all(
+			files.map((file) => fs.unlink(path.join(outputDir, file))),
+		);
+		await fs.rmdir(outputDir);
+	} catch (error) {
+		console.warn("Cleanup failed:", error);
+	}
 }
 
 Deno.test("exportSchema - should export schema in JSON format", async () => {
-  await setupTest();
+	await setupTest();
 
-  try {
-    const outputPath = await exportSchema(
-      mockSession,
-      mockProjectContextService,
-      "json",
-      false,
-    );
-    const content = await fs.readFile(outputPath, "utf8");
-    const schema = JSON.parse(content);
+	try {
+		const outputPath = await exportSchema(
+			mockSession,
+			mockProjectContextService,
+			"json",
+			false,
+		);
+		const content = await fs.readFile(outputPath, "utf8");
+		const schema = JSON.parse(content);
 
-    assertEquals(typeof schema, "object", "Schema should be an object");
-    assertEquals(typeof schema.Shot, "object", "Shot should be an object");
-  } finally {
-    await cleanupTest();
-  }
+		assertEquals(typeof schema, "object", "Schema should be an object");
+		assertEquals(typeof schema.Shot, "object", "Shot should be an object");
+	} finally {
+		await cleanupTest();
+	}
 });
 
 Deno.test("exportSchema - should export schema in YAML format", async () => {
-  await setupTest();
+	await setupTest();
 
-  try {
-    const outputPath = await exportSchema(
-      mockSession,
-      mockProjectContextService,
-      "yaml",
-      false,
-    );
-    const content = await fs.readFile(outputPath, "utf8");
-    const schema = yaml.load(content) as Record<string, unknown>;
+	try {
+		const outputPath = await exportSchema(
+			mockSession,
+			mockProjectContextService,
+			"yaml",
+			false,
+		);
+		const content = await fs.readFile(outputPath, "utf8");
+		const schema = yaml.load(content) as Record<string, unknown>;
 
-    assertEquals(typeof schema, "object", "Schema should be an object");
-    assertEquals(typeof schema.Shot, "object", "Shot should be an object");
-  } finally {
-    await cleanupTest();
-  }
+		assertEquals(typeof schema, "object", "Schema should be an object");
+		assertEquals(typeof schema.Shot, "object", "Shot should be an object");
+	} finally {
+		await cleanupTest();
+	}
 });
 
 Deno.test("exportSchema - should export schema in CSV format", async () => {
-  await setupTest();
+	await setupTest();
 
-  try {
-    const outputPath = await exportSchema(
-      mockSession,
-      mockProjectContextService,
-      "csv",
-      false,
-    );
-    const content = await fs.readFile(outputPath, "utf8");
-    const lines = content.split("\n");
+	try {
+		const outputPath = await exportSchema(
+			mockSession,
+			mockProjectContextService,
+			"csv",
+			false,
+		);
+		const content = await fs.readFile(outputPath, "utf8");
+		const lines = content.split("\n");
 
-    assertEquals(
-      lines[0].includes("Entity Type"),
-      true,
-      "Should contain Entity Type header",
-    );
-    assertEquals(
-      lines[0].includes("Field Category"),
-      true,
-      "Should contain Field Category header",
-    );
-    assertEquals(
-      lines[0].includes("Field Name"),
-      true,
-      "Should contain Field Name header",
-    );
-  } finally {
-    await cleanupTest();
-  }
+		assertEquals(
+			lines[0].includes("Entity Type"),
+			true,
+			"Should contain Entity Type header",
+		);
+		assertEquals(
+			lines[0].includes("Field Category"),
+			true,
+			"Should contain Field Category header",
+		);
+		assertEquals(
+			lines[0].includes("Field Name"),
+			true,
+			"Should contain Field Name header",
+		);
+	} finally {
+		await cleanupTest();
+	}
 });
 
 Deno.test("exportSchema - should export schema in TypeScript format", async () => {
-  await setupTest();
+	await setupTest();
 
-  try {
-    const outputPath = await exportSchema(
-      mockSession,
-      mockProjectContextService,
-      "ts",
-      false,
-    );
-    const content = await fs.readFile(outputPath, "utf8");
+	try {
+		const outputPath = await exportSchema(
+			mockSession,
+			mockProjectContextService,
+			"ts",
+			false,
+		);
+		const content = await fs.readFile(outputPath, "utf8");
 
-    assertEquals(
-      content.includes("interface"),
-      true,
-      "Should contain interface definitions",
-    );
-  } finally {
-    await cleanupTest();
-  }
+		assertEquals(
+			content.includes("interface"),
+			true,
+			"Should contain interface definitions",
+		);
+	} finally {
+		await cleanupTest();
+	}
 });
 
 Deno.test("exportSchema - should throw error with invalid session credentials", async () => {
-  const invalidSession: Partial<Session> = {
-    apiUser: "",
-    apiKey: "",
-    serverUrl: "",
-    apiEndpoint: "",
-    query: () => {
-      throw new Error("Invalid API credentials");
-    },
-  };
+	const invalidSession: Partial<Session> = {
+		apiUser: "",
+		apiKey: "",
+		serverUrl: "",
+		apiEndpoint: "",
+		query: () => {
+			throw new Error("Invalid API credentials");
+		},
+	};
 
-  // Temporarily clear environment variables
-  const originalServer = Deno.env.get("FTRACK_SERVER");
-  const originalUser = Deno.env.get("FTRACK_API_USER");
-  const originalKey = Deno.env.get("FTRACK_API_KEY");
+	// Temporarily clear environment variables
+	const originalServer = Deno.env.get("FTRACK_SERVER");
+	const originalUser = Deno.env.get("FTRACK_API_USER");
+	const originalKey = Deno.env.get("FTRACK_API_KEY");
 
-  Deno.env.delete("FTRACK_SERVER");
-  Deno.env.delete("FTRACK_API_USER");
-  Deno.env.delete("FTRACK_API_KEY");
+	Deno.env.delete("FTRACK_SERVER");
+	Deno.env.delete("FTRACK_API_USER");
+	Deno.env.delete("FTRACK_API_KEY");
 
-  try {
-    await assertRejects(
-      async () => {
-        await exportSchema(
-          invalidSession as Session,
-          mockProjectContextService,
-          "json",
-          false,
-        );
-      },
-      Error,
-      "Invalid API credentials",
-    );
-  } finally {
-    // Restore environment variables
-    if (originalServer) Deno.env.set("FTRACK_SERVER", originalServer);
-    if (originalUser) Deno.env.set("FTRACK_API_USER", originalUser);
-    if (originalKey) Deno.env.set("FTRACK_API_KEY", originalKey);
-  }
+	try {
+		await assertRejects(
+			async () => {
+				await exportSchema(
+					invalidSession as Session,
+					mockProjectContextService,
+					"json",
+					false,
+				);
+			},
+			Error,
+			"Invalid API credentials",
+		);
+	} finally {
+		// Restore environment variables
+		if (originalServer) Deno.env.set("FTRACK_SERVER", originalServer);
+		if (originalUser) Deno.env.set("FTRACK_API_USER", originalUser);
+		if (originalKey) Deno.env.set("FTRACK_API_KEY", originalKey);
+	}
 });
 
 Deno.test("exportSchema - should create output directory if it does not exist", async () => {
-  await fs.rm(outputDir, { recursive: true, force: true });
+	await fs.rm(outputDir, { recursive: true, force: true });
 
-  try {
-    const outputPath = await exportSchema(
-      mockSession,
-      mockProjectContextService,
-      "json",
-      false,
-    );
+	try {
+		const outputPath = await exportSchema(
+			mockSession,
+			mockProjectContextService,
+			"json",
+			false,
+		);
 
-    const dirExists = await fs.stat(path.dirname(outputPath))
-      .then(() => true)
-      .catch(() => false);
+		const dirExists = await fs
+			.stat(path.dirname(outputPath))
+			.then(() => true)
+			.catch(() => false);
 
-    assertEquals(dirExists, true, "Output directory should exist");
-  } finally {
-    await cleanupTest();
-  }
+		assertEquals(dirExists, true, "Output directory should exist");
+	} finally {
+		await cleanupTest();
+	}
 });

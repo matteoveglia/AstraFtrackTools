@@ -20,8 +20,8 @@
  * but may be removed once all files are migrated and tested.
  */
 export function initCliffyPrompt(): void {
-  // Cliffy handles TTY initialization natively - no special setup required
-  // This function is maintained for consistency during migration
+	// Cliffy handles TTY initialization natively - no special setup required
+	// This function is maintained for consistency during migration
 }
 
 /**
@@ -30,6 +30,6 @@ export function initCliffyPrompt(): void {
  * @deprecated Use initCliffyPrompt() instead. This will be removed after migration.
  */
 export function initInquirerPrompt(): void {
-  // Redirect to Cliffy initialization for backward compatibility
-  initCliffyPrompt();
+	// Redirect to Cliffy initialization for backward compatibility
+	initCliffyPrompt();
 }

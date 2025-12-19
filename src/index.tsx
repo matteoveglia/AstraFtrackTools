@@ -5,16 +5,16 @@ import { App } from "./components/App.tsx";
 
 // Declare Deno global for TypeScript
 declare const Deno: {
-  exit(code?: number): never;
+	exit(code?: number): never;
 };
 
 // Render the Ink app
 const { waitUntilExit } = render(
-  <App
-    onExit={() => {
-      Deno.exit(0);
-    }}
-  />
+	<App
+		onExit={() => {
+			Deno.exit(0);
+		}}
+	/>,
 );
 
 // Wait for the app to exit

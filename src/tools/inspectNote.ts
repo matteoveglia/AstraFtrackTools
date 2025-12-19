@@ -1,42 +1,42 @@
 import type { Session } from "@ftrack/api";
 import { Input } from "@cliffy/prompt";
 import { debug } from "../utils/debug.ts";
-import { ProjectContextService } from "../services/projectContext.ts";
-import { QueryService } from "../services/queries.ts";
+import type { ProjectContextService } from "../services/projectContext.ts";
+import type { QueryService } from "../services/queries.ts";
 import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
 
 export async function inspectNote(
-  session: Session,
-  projectContextService: ProjectContextService,
-  _queryService: QueryService,
-  noteId?: string,
+	session: Session,
+	projectContextService: ProjectContextService,
+	_queryService: QueryService,
+	noteId?: string,
 ): Promise<void> {
-  const projectContext = projectContextService.getContext();
-  const contextDisplay = projectContext.isGlobal
-    ? "all projects"
-    : `project "${projectContext.project?.name}"`;
+	const projectContext = projectContextService.getContext();
+	const contextDisplay = projectContext.isGlobal
+		? "all projects"
+		: `project "${projectContext.project?.name}"`;
 
-  try {
-    // Prompt for note ID if not provided
-    if (!noteId) {
-      noteId = await Input.prompt({
-        message: "Enter the Note ID to inspect:",
-        validate: (input: string) => {
-          if (!input.trim()) {
-            return "Note ID is required";
-          }
-          return true;
-        },
-      });
-      noteId = noteId.trim();
-    }
+	try {
+		// Prompt for note ID if not provided
+		if (!noteId) {
+			noteId = await Input.prompt({
+				message: "Enter the Note ID to inspect:",
+				validate: (input: string) => {
+					if (!input.trim()) {
+						return "Note ID is required";
+					}
+					return true;
+				},
+			});
+			noteId = noteId.trim();
+		}
 
-    console.log(`\n🔍 Inspecting Note: ${noteId} (${contextDisplay})`);
+		console.log(`\n🔍 Inspecting Note: ${noteId} (${contextDisplay})`);
 
-    // Fetch note details using direct session query (notes don't need project scoping)
-    const noteResponse = await withErrorHandling(
-      () =>
-        session.query(`
+		// Fetch note details using direct session query (notes don't need project scoping)
+		const noteResponse = await withErrorHandling(
+			() =>
+				session.query(`
         select 
           id, 
           content, 
@@ -51,47 +51,47 @@ export async function inspectNote(
         from Note 
         where id="${noteId}"
       `),
-      {
-        operation: "fetch note details",
-        entity: "Note",
-        additionalData: { noteId, contextDisplay },
-      },
-    );
+			{
+				operation: "fetch note details",
+				entity: "Note",
+				additionalData: { noteId, contextDisplay },
+			},
+		);
 
-    if (!noteResponse?.data || noteResponse.data.length === 0) {
-      console.log(`❌ Note with ID "${noteId}" not found`);
-      return;
-    }
+		if (!noteResponse?.data || noteResponse.data.length === 0) {
+			console.log(`❌ Note with ID "${noteId}" not found`);
+			return;
+		}
 
-    const note = noteResponse.data[0];
+		const note = noteResponse.data[0];
 
-    // Display note information
-    console.log("\n📝 Note Details:");
-    console.log(`   ID: ${note.id}`);
-    console.log(`   Content: ${note.content || "No content"}`);
-    console.log(
-      `   Author: ${note.author?.first_name} ${note.author?.last_name} (${note.author?.username})`,
-    );
-    console.log(
-      `   Date: ${
-        note.date ? new Date(note.date).toLocaleString() : "Unknown"
-      }`,
-    );
-    console.log(
-      `   Category: ${note.category?.name || "No category"} ${
-        note.category?.color ? `(${note.category.color})` : ""
-      }`,
-    );
-    console.log(
-      `   Parent: ${note.parent?.name || "No parent"} ${
-        note.parent?.id ? `(${note.parent.id})` : ""
-      }`,
-    );
+		// Display note information
+		console.log("\n📝 Note Details:");
+		console.log(`   ID: ${note.id}`);
+		console.log(`   Content: ${note.content || "No content"}`);
+		console.log(
+			`   Author: ${note.author?.first_name} ${note.author?.last_name} (${note.author?.username})`,
+		);
+		console.log(
+			`   Date: ${
+				note.date ? new Date(note.date).toLocaleString() : "Unknown"
+			}`,
+		);
+		console.log(
+			`   Category: ${note.category?.name || "No category"} ${
+				note.category?.color ? `(${note.category.color})` : ""
+			}`,
+		);
+		console.log(
+			`   Parent: ${note.parent?.name || "No parent"} ${
+				note.parent?.id ? `(${note.parent.id})` : ""
+			}`,
+		);
 
-    // Fetch note components using direct session query
-    const componentsResponse = await withErrorHandling(
-      () =>
-        session.query(`
+		// Fetch note components using direct session query
+		const componentsResponse = await withErrorHandling(
+			() =>
+				session.query(`
         select 
           id,
           name,
@@ -100,35 +100,35 @@ export async function inspectNote(
         from Component 
         where note_id="${noteId}"
       `),
-      {
-        operation: "fetch note components",
-        entity: "Component",
-        additionalData: { noteId, contextDisplay },
-      },
-    );
+			{
+				operation: "fetch note components",
+				entity: "Component",
+				additionalData: { noteId, contextDisplay },
+			},
+		);
 
-    if (componentsResponse?.data && componentsResponse.data.length > 0) {
-      console.log("\n📎 Attachments:");
-      componentsResponse.data.forEach((component: unknown) => {
-        const comp = component as {
-          name: string;
-          file_type?: string;
-          size?: number;
-        };
-        console.log(
-          `   • ${comp.name} (${comp.file_type || "unknown type"}, ${
-            comp.size ? `${comp.size} bytes` : "unknown size"
-          })`,
-        );
-      });
-    } else {
-      console.log("\n📎 No attachments found");
-    }
+		if (componentsResponse?.data && componentsResponse.data.length > 0) {
+			console.log("\n📎 Attachments:");
+			componentsResponse.data.forEach((component: unknown) => {
+				const comp = component as {
+					name: string;
+					file_type?: string;
+					size?: number;
+				};
+				console.log(
+					`   • ${comp.name} (${comp.file_type || "unknown type"}, ${
+						comp.size ? `${comp.size} bytes` : "unknown size"
+					})`,
+				);
+			});
+		} else {
+			console.log("\n📎 No attachments found");
+		}
 
-    // Fetch component locations using direct session query
-    const locationsResponse = await withErrorHandling(
-      () =>
-        session.query(`
+		// Fetch component locations using direct session query
+		const locationsResponse = await withErrorHandling(
+			() =>
+				session.query(`
         select 
           component.name,
           location.name,
@@ -136,61 +136,61 @@ export async function inspectNote(
         from ComponentLocation 
         where component.note_id="${noteId}"
       `),
-      {
-        operation: "fetch component locations",
-        entity: "ComponentLocation",
-        additionalData: { noteId, contextDisplay },
-      },
-    );
+			{
+				operation: "fetch component locations",
+				entity: "ComponentLocation",
+				additionalData: { noteId, contextDisplay },
+			},
+		);
 
-    if (locationsResponse?.data && locationsResponse.data.length > 0) {
-      console.log("\n📍 Component Locations:");
-      locationsResponse.data.forEach((location: unknown) => {
-        const loc = location as {
-          component?: { name: string };
-          location?: { name: string };
-          resource_identifier: string;
-        };
-        console.log(
-          `   • ${loc.component?.name}: ${loc.location?.name} - ${loc.resource_identifier}`,
-        );
-      });
-    }
+		if (locationsResponse?.data && locationsResponse.data.length > 0) {
+			console.log("\n📍 Component Locations:");
+			locationsResponse.data.forEach((location: unknown) => {
+				const loc = location as {
+					component?: { name: string };
+					location?: { name: string };
+					resource_identifier: string;
+				};
+				console.log(
+					`   • ${loc.component?.name}: ${loc.location?.name} - ${loc.resource_identifier}`,
+				);
+			});
+		}
 
-    // Fetch metadata using direct session query
-    const metadataResponse = await withErrorHandling(
-      () =>
-        session.query(`
+		// Fetch metadata using direct session query
+		const metadataResponse = await withErrorHandling(
+			() =>
+				session.query(`
         select 
           key,
           value
         from Metadata 
         where parent_id="${noteId}"
       `),
-      {
-        operation: "fetch note metadata",
-        entity: "Metadata",
-        additionalData: { noteId, contextDisplay },
-      },
-    );
+			{
+				operation: "fetch note metadata",
+				entity: "Metadata",
+				additionalData: { noteId, contextDisplay },
+			},
+		);
 
-    if (metadataResponse?.data && metadataResponse.data.length > 0) {
-      console.log("\n🏷️  Metadata:");
-      metadataResponse.data.forEach((meta: unknown) => {
-        const metadata = meta as { key: string; value: string };
-        console.log(`   ${metadata.key}: ${metadata.value}`);
-      });
-    } else {
-      console.log("\n🏷️  No metadata found");
-    }
+		if (metadataResponse?.data && metadataResponse.data.length > 0) {
+			console.log("\n🏷️  Metadata:");
+			metadataResponse.data.forEach((meta: unknown) => {
+				const metadata = meta as { key: string; value: string };
+				console.log(`   ${metadata.key}: ${metadata.value}`);
+			});
+		} else {
+			console.log("\n🏷️  No metadata found");
+		}
 
-    debug(`Note inspection completed for ID: ${noteId}`);
-  } catch (error) {
-    handleError(error, {
-      operation: "inspect note",
-      entity: "Note",
-      additionalData: { noteId, contextDisplay },
-    });
-    throw error;
-  }
+		debug(`Note inspection completed for ID: ${noteId}`);
+	} catch (error) {
+		handleError(error, {
+			operation: "inspect note",
+			entity: "Note",
+			additionalData: { noteId, contextDisplay },
+		});
+		throw error;
+	}
 }
