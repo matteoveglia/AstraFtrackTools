@@ -23,6 +23,11 @@ jobs:
         with:
           deno-version: "2.x"
 
+      - name: Prepare dist directory
+        run: |
+          rm -rf dist
+          mkdir -p dist
+
       - name: Get package.json version
         id: package_version
         run: echo "version=$(deno eval 'console.log(JSON.parse(Deno.readTextFileSync("./package.json")).version)')" >> $GITHUB_OUTPUT

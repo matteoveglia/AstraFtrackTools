@@ -24,7 +24,7 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
 	onProjectSelected,
 	onCredentialsUpdated,
 	onExit,
-}) => {
+}: ProjectSelectorProps) => {
 	const [loading, setLoading] = useState(true);
 	const [projects, setProjects] = useState<Project[]>([]);
 	const [error, setError] = useState<string | null>(null);
@@ -34,15 +34,15 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
 		loadProjects();
 	}, []);
 
-	const loadProjects = async () => {
+	const loadProjects = async (): Promise<void> => {
 		try {
 			setLoading(true);
-			const response = await session.query(
+			const response = (await session.query(
 				'select id, name, full_name from Project where status is "active"',
-			);
+			)) as unknown as { data?: Project[] };
 
 			// Ftrack API returns data in a .data property
-			const projectsArray = (response as { data: Project[] }).data || [];
+			const projectsArray = Array.isArray(response.data) ? response.data : [];
 
 			setProjects(projectsArray);
 			setLoading(false);
@@ -60,7 +60,7 @@ export const ProjectSelector: React.FC<ProjectSelectorProps> = ({
 		} else if (value === "exit") {
 			onExit();
 		} else {
-			const project = projects.find((p) => p.id === value);
+			const project = projects.find((project: Project) => project.id === value);
 			if (project) {
 				onProjectSelected({
 					project: project,
