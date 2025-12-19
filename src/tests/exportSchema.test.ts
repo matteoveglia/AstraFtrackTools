@@ -18,12 +18,32 @@ const mockProjectContextService = {
 	}),
 } as unknown as ProjectContextService;
 
-// Mock session with proper query responses
+// Mock session with proper query responses and schema definitions
 const mockSession = {
 	apiUser: "test",
 	apiKey: "test",
 	serverUrl: "test",
 	apiEndpoint: "test",
+	// Minimal schema definitions to simulate full property export
+	getSchema: (schemaId: string) => {
+		const common = {
+			properties: {
+				id: { type: "string" },
+				name: { type: "string" },
+			},
+			required: ["id"],
+		};
+		return {
+			...common,
+			// Add a schema-specific field to check parity
+			properties: {
+				...common.properties,
+				status_id: { type: "string" },
+			},
+			required: ["id", "status_id"],
+			id: schemaId,
+		};
+	},
 	query: (expression: string) => {
 		if (expression.includes("ObjectType")) {
 			return Promise.resolve({
@@ -157,6 +177,46 @@ Deno.test("exportSchema - should export schema in TypeScript format", async () =
 			true,
 			"Should contain interface definitions",
 		);
+		// Extract embedded JSON schema and ensure parity with JSON export
+		const jsonPath = await exportSchema(
+			mockSession,
+			mockProjectContextService,
+			"json",
+			false,
+		);
+		const jsonContent = JSON.parse(await fs.readFile(jsonPath, "utf8"));
+		const schemaStart = content.indexOf("export const schema = ");
+		const asConst = content.indexOf(" as const;", schemaStart);
+		const embedded = content.slice(
+			schemaStart + "export const schema = ".length,
+			asConst,
+		);
+		const tsSchema = JSON.parse(embedded);
+		assertEquals(tsSchema, jsonContent, "TS schema should equal JSON schema");
+	} finally {
+		await cleanupTest();
+	}
+});
+
+Deno.test("exportSchema - JSON and YAML should have parity", async () => {
+	await setupTest();
+
+	try {
+		const jsonPath = await exportSchema(
+			mockSession,
+			mockProjectContextService,
+			"json",
+			false,
+		);
+		const yamlPath = await exportSchema(
+			mockSession,
+			mockProjectContextService,
+			"yaml",
+			false,
+		);
+		const jsonSchema = JSON.parse(await fs.readFile(jsonPath, "utf8"));
+		const yamlSchema = yaml.load(await fs.readFile(yamlPath, "utf8")) as unknown;
+		assertEquals(yamlSchema, jsonSchema, "YAML schema should equal JSON schema");
 	} finally {
 		await cleanupTest();
 	}

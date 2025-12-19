@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { createObjectCsvWriter } from "csv-writer";
 import type { Session } from "@ftrack/api";
@@ -13,13 +12,14 @@ import { handleError, withErrorHandling } from "../utils/errorHandler.ts";
 export interface SchemaField {
 	type: string;
 	required: boolean;
+	schema?: unknown;
 }
 
 export interface CustomAttribute {
 	id: string;
 	key: string;
 	label: string;
-	config: { type: string };
+	config: Record<string, unknown>;
 	entity_type: string;
 	type?: string;
 }
@@ -37,27 +37,43 @@ export interface EntitySchema {
 		standard: CustomAttribute[];
 		links: CustomAttribute[];
 	};
+	schemaDefinition?: unknown;
 	sample?: SampleData;
 }
 
 type Schema = Record<string, EntitySchema>;
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+function inferSchemaFieldType(propertySchema: unknown): string {
+	if (!propertySchema || typeof propertySchema !== "object") {
+		return "unknown";
+	}
 
-const _ENTITY_TYPES = [
-	"Action",
-	"ActionLog",
-	"ApiKey",
-	"Appointment",
-	"Asset",
-	"AssetBuild",
-	"AssetVersion",
-	"Shot",
-	"Task",
-	"Sequence",
-	"Project",
-	"User",
-];
+	const schema = propertySchema as Record<string, unknown>;
+	if (typeof schema.$ref === "string") {
+		return `ref:${schema.$ref}`;
+	}
+
+	if (schema.type === "array") {
+		const items = schema.items;
+		if (items && typeof items === "object") {
+			const itemsSchema = items as Record<string, unknown>;
+			if (typeof itemsSchema.$ref === "string") {
+				return `array<ref:${itemsSchema.$ref}>`;
+			}
+			if (typeof itemsSchema.type === "string") {
+				return `array<${itemsSchema.type}>`;
+			}
+		}
+		return "array";
+	}
+
+	if (typeof schema.type === "string") {
+		const format = typeof schema.format === "string" ? schema.format : undefined;
+		return format ? `${schema.type}:${format}` : schema.type;
+	}
+
+	return "unknown";
+}
 
 async function generateSchema(
 	session: Session,
@@ -96,59 +112,47 @@ async function generateSchema(
 				customAttributes: { standard: [], links: [] },
 			};
 
-			// Get base fields for this entity type
+			// Get base fields for this entity type from ftrack schema definitions
 			try {
-				// Add common base fields that exist for most entity types
-				const commonBaseFields = {
-					id: { type: "string", required: true },
-					name: { type: "string", required: false },
-					created_date: { type: "datetime", required: false },
-					updated_date: { type: "datetime", required: false },
-				};
+				const schemaDefinition = await (
+					session as unknown as {
+						getSchema?: (schemaId: string) => Promise<unknown> | unknown;
+					}
+				).getSchema?.(entityType.name);
 
-				// Add entity-specific base fields
-				const entitySpecificFields: Record<
-					string,
-					Record<string, SchemaField>
-				> = {
-					Project: {
-						full_name: { type: "string", required: false },
-						status: { type: "string", required: false },
-						start_date: { type: "date", required: false },
-						end_date: { type: "date", required: false },
-					},
-					Shot: {
-						status: { type: "string", required: false },
-						priority: { type: "string", required: false },
-						description: { type: "text", required: false },
-					},
-					Task: {
-						status: { type: "string", required: false },
-						priority: { type: "string", required: false },
-						bid: { type: "number", required: false },
-						type: { type: "string", required: false },
-					},
-					AssetVersion: {
-						version: { type: "number", required: false },
-						comment: { type: "text", required: false },
-						is_latest_version: { type: "boolean", required: false },
-					},
-					User: {
-						username: { type: "string", required: false },
-						email: { type: "string", required: false },
-						first_name: { type: "string", required: false },
-						last_name: { type: "string", required: false },
-					},
-				};
+				schema[entityType.name].schemaDefinition = schemaDefinition;
 
-				// Merge common and entity-specific fields
-				schema[entityType.name].baseFields = {
-					...commonBaseFields,
-					...(entitySpecificFields[entityType.name] || {}),
-				};
+				const def = schemaDefinition as
+					| {
+							properties?: Record<string, unknown>;
+							required?: string[];
+					  }
+					| undefined;
+
+				if (def?.properties && typeof def.properties === "object") {
+					const requiredFields = Array.isArray(def.required)
+						? new Set(def.required)
+						: new Set<string>();
+
+					for (const [fieldName, fieldSchema] of Object.entries(
+						def.properties,
+					)) {
+						schema[entityType.name].baseFields[fieldName] = {
+							type: inferSchemaFieldType(fieldSchema),
+							required: requiredFields.has(fieldName),
+							schema: fieldSchema,
+						};
+					}
+				} else {
+					// Set minimal base fields as fallback
+					schema[entityType.name].baseFields = {
+						id: { type: "string", required: true },
+						name: { type: "string", required: false },
+					};
+				}
 			} catch (schemaError) {
 				debug(
-					`Could not set base fields for ${entityType.name}: ${schemaError}`,
+					`Could not fetch schema definition for ${entityType.name}: ${schemaError}`,
 				);
 				// Set minimal base fields as fallback
 				schema[entityType.name].baseFields = {
@@ -179,7 +183,7 @@ async function generateSchema(
 			);
 
 			// Process custom attributes
-			if (customAttributesResponse && customAttributesResponse.data) {
+			if (customAttributesResponse?.data) {
 				for (const attr of customAttributesResponse.data) {
 					const customAttr = {
 						id: attr.id,
@@ -234,11 +238,13 @@ async function exportToCSV(schema: Schema, outputPath: string): Promise<void> {
 
 		// Add standard custom attributes
 		entitySchema.customAttributes.standard.forEach((attr) => {
+			const configType =
+				typeof attr.config.type === "string" ? attr.config.type : "unknown";
 			records.push({
 				"Entity Type": entityType,
 				"Field Category": "Custom Attribute",
 				"Field Name": attr.key,
-				"Field Type": attr.config.type,
+				"Field Type": configType,
 				Required: "No",
 				"Is Custom": "Yes",
 				Description: attr.label,
@@ -279,7 +285,7 @@ async function exportToCSV(schema: Schema, outputPath: string): Promise<void> {
 async function exportToYAML(schema: Schema, outputPath: string): Promise<void> {
 	debug("Starting YAML export...");
 	const yamlContent = yaml.dump(schema, {
-		indent: "2",
+		indent: 2,
 		lineWidth: -1,
 		noRefs: true,
 		sortKeys: true,
@@ -300,7 +306,7 @@ async function exportToJSON(schema: Schema, outputPath: string): Promise<void> {
 async function exportToTypeScript(
 	schema: Record<string, EntitySchema>,
 	outputPath: string,
-): Promise<string> {
+): Promise<void> {
 	debug("Starting TypeScript export...");
 	const tempDir = path.join(process.cwd(), "temp");
 	const tempFile = path.join(tempDir, "schema.ts");
@@ -326,7 +332,7 @@ async function exportToTypeScript(
 		await fs.rmdir(tempDir);
 		debug("Cleaned up temporary files");
 
-		return outputPath;
+		return;
 	} catch (error) {
 		console.error("Error in TypeScript schema export:", error);
 		throw new Error(
@@ -339,6 +345,9 @@ function generateTypeScriptSchema(
 	schema: Record<string, EntitySchema>,
 ): string {
 	let output = "// Generated Ftrack Schema Types\n\n";
+	output += `export const schema = ${JSON.stringify(schema, null, 2)} as const;\n\n`;
+	output += "export type SchemaExport = typeof schema;\n";
+	output += "export type EntityType = keyof SchemaExport;\n\n";
 
 	for (const [entityName, entitySchema] of Object.entries(schema)) {
 		output += `interface ${entityName} {\n`;
@@ -366,8 +375,10 @@ function generateTypeScriptFields(entitySchema: EntitySchema): string {
 		const { standard = [], links = [] } = entitySchema.customAttributes;
 		for (const attr of [...standard, ...links]) {
 			const fieldName = `custom_${attr.key}`;
+			const configType =
+				typeof attr.config.type === "string" ? attr.config.type : "unknown";
 			const fieldType =
-				attr.type === "link" ? "string" : mapTypeToTypeScript(attr.config.type);
+				attr.type === "link" ? "string" : mapTypeToTypeScript(configType);
 			fields += `    ${fieldName}?: ${fieldType};\n`;
 		}
 	}
@@ -375,16 +386,33 @@ function generateTypeScriptFields(entitySchema: EntitySchema): string {
 }
 
 function mapTypeToTypeScript(ftrackType: string): string {
+	const normalized = ftrackType.includes(":")
+		? ftrackType.split(":")[0]
+		: ftrackType;
+
+	if (normalized.startsWith("ref:")) {
+		return normalized.slice("ref:".length);
+	}
+
+	if (normalized.startsWith("array<") && normalized.endsWith(">")) {
+		const inner = normalized.slice("array<".length, -1);
+		return `${mapTypeToTypeScript(inner)}[]`;
+	}
+
 	const typeMap: Record<string, string> = {
 		string: "string",
 		number: "number",
+		integer: "number",
 		boolean: "boolean",
-		date: "Date",
+		date: "string",
+		datetime: "string",
 		object: "Record<string, unknown>",
 		array: "unknown[]",
 		link: "string",
+		text: "string",
+		variable: "unknown",
 	};
-	return typeMap[ftrackType] || "unknown";
+	return typeMap[normalized] || "unknown";
 }
 
 export async function exportSchema(
