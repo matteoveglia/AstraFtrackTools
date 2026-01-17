@@ -23,8 +23,8 @@
     "npm:@types/react@18.3.12": "18.3.12",
     "npm:csv-writer@^1.6.0": "1.6.0",
     "npm:dotenv@^17.2.3": "17.2.3",
-    "npm:ink-text-input@6": "6.0.0_ink@6.5.1__react@19.2.3_react@19.2.3",
-    "npm:ink@^6.5.1": "6.5.1_react@19.2.3",
+    "npm:ink-text-input@6": "6.0.0_ink@6.6.0__@types+react@18.3.12__react@19.2.3_react@19.2.3_@types+react@18.3.12",
+    "npm:ink@^6.6.0": "6.6.0_@types+react@18.3.12_react@19.2.3",
     "npm:js-yaml@^4.1.1": "4.1.1",
     "npm:moment@^2.30.1": "2.30.1",
     "npm:react@19.2.3": "19.2.3"
@@ -207,7 +207,7 @@
     "indent-string@5.0.0": {
       "integrity": "sha512-m6FAo/spmsW2Ab2fU35JTYwtOKa2yAwXSwgjSv1TJzh4Mh7mC3lzAOVLBprb72XsTrgkEIsl7YrFNAiDiRhIGg=="
     },
-    "ink-text-input@6.0.0_ink@6.5.1__react@19.2.3_react@19.2.3": {
+    "ink-text-input@6.0.0_ink@6.6.0__@types+react@18.3.12__react@19.2.3_react@19.2.3_@types+react@18.3.12": {
       "integrity": "sha512-Fw64n7Yha5deb1rHY137zHTAbSTNelUKuB5Kkk2HACXEtwIHBCf9OH2tP/LQ9fRYTl1F0dZgbW0zPnZk6FA9Lw==",
       "dependencies": [
         "chalk",
@@ -216,10 +216,11 @@
         "type-fest"
       ]
     },
-    "ink@6.5.1_react@19.2.3": {
-      "integrity": "sha512-wF3j/DmkM8q5E+OtfdQhCRw8/0ahkc8CUTgEddxZzpEWPslu7YPL3t64MWRoI9m6upVGpfAg4ms2BBvxCdKRLQ==",
+    "ink@6.6.0_@types+react@18.3.12_react@19.2.3": {
+      "integrity": "sha512-QDt6FgJxgmSxAelcOvOHUvFxbIUjVpCH5bx+Slvc5m7IEcpGt3dYwbz/L+oRnqEGeRvwy1tineKK4ect3nW1vQ==",
       "dependencies": [
         "@alcalzone/ansi-tokenize",
+        "@types/react",
         "ansi-escapes",
         "ansi-styles",
         "auto-bind",
@@ -243,6 +244,9 @@
         "wrap-ansi",
         "ws",
         "yoga-layout"
+      ],
+      "optionalPeers": [
+        "@types/react"
       ]
     },
     "is-fullwidth-code-point@5.1.0": {
@@ -384,7 +388,7 @@
       "npm:csv-writer@^1.6.0",
       "npm:dotenv@^17.2.3",
       "npm:ink-text-input@6",
-      "npm:ink@^6.5.1",
+      "npm:ink@^6.6.0",
       "npm:js-yaml@^4.1.1",
       "npm:moment@^2.30.1",
       "npm:react@19.2.3"
